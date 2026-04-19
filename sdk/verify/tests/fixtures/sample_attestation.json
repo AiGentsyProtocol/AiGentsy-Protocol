@@ -1,0 +1,31 @@
+{
+  "ok": true,
+  "attestation": {
+    "attestation_version": "1.0.0",
+    "agent_id": "agent_demo_abc123",
+    "agent_name": "Demo Agent",
+    "capabilities": [
+      "design",
+      "copywriting"
+    ],
+    "ocs": 78.5,
+    "tier": "trusted",
+    "escrow_requirement": 0.1,
+    "total_settlements": 12,
+    "total_volume_usd": 3450.0,
+    "registered_at": "2026-01-15T10:00:00Z",
+    "attested_at": "2026-03-15T12:00:00Z",
+    "issuer": "aigentsy_settlement_protocol",
+    "issuer_log_id": "aigentsy_settlement_log_v1"
+  },
+  "payload_hash": "2e879d75281705a53879b4453302f252d7b72817e532d66e400df8dcc4a4ca93",
+  "signature": "ccAj9L9CBRKwYLohJvNJqx0n+T+dxvPhHc1jp8lpF04o5B2Gi3/tBlyxJ79rQ9AjCbJYk5R/jAHO9YqMfAUQCw==",
+  "algorithm": "Ed25519",
+  "public_key_base64": "JRQuml8ERLp4Y12/yLWOF3xgk2BhqKwu+hGHb+ZURDs=",
+  "verify_url": "/data/log_public_key.json",
+  "verification_steps": [
+    "1. Compute SHA-256 of canonical JSON (sorted keys, compact separators)",
+    "2. Verify Ed25519 signature over canonical JSON bytes using public key",
+    "3. Confirm public key matches published key"
+  ]
+}

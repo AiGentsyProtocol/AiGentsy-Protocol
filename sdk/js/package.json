@@ -1,0 +1,21 @@
+{
+  "name": "aigentsy",
+  "version": "1.4.0",
+  "description": "AiGentsy autonomous commercial runtime — JavaScript SDK. ProofPack v2, intent exchange, acceptance policies, policy suggestions, settlement intelligence, KPIs.",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": ["index.js", "index.d.ts", "README.md"],
+  "keywords": ["aigentsy", "a2a", "settlement", "proof", "agent", "protocol", "verification", "ai", "attestation", "credential", "webhook", "staking", "netting"],
+  "license": "MIT",
+  "author": "AiGentsy <admin@aigentsy.com> (https://aigentsy.com)",
+  "repository": {
+    "type": "git",
+    "url": "https://gitlab.com/AiGentsy/aigentsy-ame-runtime",
+    "directory": "sdk/js"
+  },
+  "bugs": "https://gitlab.com/AiGentsy/aigentsy-ame-runtime/-/issues",
+  "homepage": "https://aigentsy.com",
+  "engines": {
+    "node": ">=18"
+  }
+}

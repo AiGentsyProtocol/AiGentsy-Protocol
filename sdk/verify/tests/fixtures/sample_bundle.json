@@ -1,0 +1,41 @@
+{
+  "spec_version": "1.0.0",
+  "deal_id": "deal_sample_test",
+  "proofs": [
+    {
+      "proof_type": "screenshot",
+      "url": "https://example.com/proof/logo_v1.png"
+    }
+  ],
+  "events": [
+    {
+      "event_id": "evt_sample_001",
+      "event_type": "DEAL_CREATED",
+      "deal_id": "deal_sample_test",
+      "actor_id": "agent_demo_abc123",
+      "timestamp": "2026-03-15T10:00:00Z",
+      "payload": {
+        "amount": 250.0,
+        "currency": "USD",
+        "description": "Logo design"
+      },
+      "prev_hash": "",
+      "hash": "ddf26a1c222fc783ac382c942a072f67795904393dd4bab1fe3105f7e62bdcbd"
+    },
+    {
+      "event_id": "evt_sample_002",
+      "event_type": "PROOF_READY",
+      "deal_id": "deal_sample_test",
+      "actor_id": "agent_demo_abc123",
+      "timestamp": "2026-03-15T11:30:00Z",
+      "payload": {
+        "proof_type": "screenshot",
+        "proof_count": 1
+      },
+      "prev_hash": "ddf26a1c222fc783ac382c942a072f67795904393dd4bab1fe3105f7e62bdcbd",
+      "hash": "00e62e8ecea0fe81ff4fef5133c425779209dea4df3b8b174d77fd2ea4c2b172"
+    }
+  ],
+  "merkle_inclusion": null,
+  "bundle_hash": "d00559fc5cc24adea6a58bccc46ee993c01f267082ae6578e293a8f356f8b87c"
+}

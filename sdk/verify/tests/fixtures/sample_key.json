@@ -1,0 +1,7 @@
+{
+  "key_id": "test_sample_key_v1",
+  "algorithm": "Ed25519",
+  "public_key_base64": "JRQuml8ERLp4Y12/yLWOF3xgk2BhqKwu+hGHb+ZURDs=",
+  "note": "TEST KEY for sample artifacts only. Not the production signing key.",
+  "status": "test"
+}

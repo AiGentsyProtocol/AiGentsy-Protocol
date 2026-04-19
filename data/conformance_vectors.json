@@ -1,0 +1,168 @@
+{
+  "description": "Exportable conformance vectors for third-party protocol implementations",
+  "version": "2.0",
+  "algorithms": {
+    "idempotency_key": "idem_ + SHA256(json.dumps({deal_id, action, ...params}, sort_keys=True))[:24]",
+    "event_hash": "SHA256(json.dumps({event_id, event_type, deal_id, actor_id, timestamp, payload, prev_hash}, sort_keys=True))",
+    "scope_lock_hash": "SHA256(vertical|sku_id|scope_summary|estimated_price|policy_hash|proof_hash)[:32]",
+    "policy_hash": "SHA256(json.dumps(predicates, sort_keys=True))[:24]",
+    "receipt_hash": "SHA256(deal_id|proof_hash|provider|verified|confidence)[:24]",
+    "dedup_key": "SHA256(json.dumps({deal_id, entry_type, ref, debit, credit, currency, counterparty, event_id}, sort_keys=True))[:24]",
+    "verification_hash": "SHA256(deal_id|proof_hash|provider_name|verified)[:24]",
+    "leaf_hash": "SHA256(0x00 || canonical_leaf_json) — RFC 6962 domain separation",
+    "node_hash": "SHA256(0x01 || left || right) — RFC 6962 domain separation",
+    "bundle_hash": "SHA256(json.dumps({spec_version, deal_id, proofs, events, merkle_inclusion}, sort_keys=True, separators=(',',':'), default=str))",
+    "sth_sign_input": "{log_id}|{tree_size}|{root_hash}|{timestamp}",
+    "attestation_hash": "SHA256(json.dumps(attestation_payload, sort_keys=True, separators=(',',':')))"
+  },
+  "fee_schedule": {
+    "protocol_fee_pct": 0.028,
+    "protocol_fee_flat_usd": 0.28,
+    "formula": "fee = gross * protocol_fee_pct + protocol_fee_flat",
+    "volume_discounts": {
+      "50000+": 0.85,
+      "10000+": 0.90,
+      "1000+": 0.95
+    }
+  },
+  "transparency_log": {
+    "type": "RFC 6962 Merkle tree",
+    "hash_function": "SHA-256",
+    "leaf_prefix": "0x00",
+    "node_prefix": "0x01",
+    "signer": "Ed25519",
+    "log_id": "aigentsy_settlement_log_v1",
+    "canonical_public_key_source": "GET /protocol/merkle/public-key"
+  },
+  "anchor_receipt": {
+    "tsa_method": "RFC 3161",
+    "interval": "hourly or on tree growth",
+    "fields": ["tree_size", "root_hash", "timestamp", "tsa_response_b64", "tsa_url"]
+  },
+  "key_metadata": {
+    "canonical_form": {
+      "key_id": "string",
+      "algorithm": "Ed25519",
+      "public_key_base64": "string (base64)",
+      "status": "active",
+      "active_from": "ISO 8601",
+      "key_version": 1,
+      "rotation_policy": "manual"
+    },
+    "canonical_source": "GET /protocol/merkle/public-key",
+    "discovery_pointer": "https://aigentsy.com/data/log_public_key.json"
+  },
+  "programmable_mandate_vectors": {
+    "description": "Test vectors for programmable mandate rule evaluation (v1.2.0)",
+    "algorithm": "First-match-wins rule evaluation. Each rule has conditions (all must match) and an action.",
+    "allowed_fields": ["seller_ocs", "seller_tier", "seller_dispute_rate", "seller_total_settlements", "amount_usd", "vertical", "proof_type", "sku_id", "verifier_confidence", "risk_flag_count", "seller_is_new", "sku_is_new", "previous_deals_with_seller"],
+    "allowed_ops": [">=", "<=", "==", "!=", ">", "<", "in", "not_in"],
+    "allowed_actions": ["auto_approve", "require_human", "reject", "require_staking"],
+    "vectors": [
+      {
+        "name": "auto_approve_high_ocs_low_amount",
+        "rules": [
+          {"conditions": [{"field": "seller_ocs", "op": ">=", "value": 85}, {"field": "amount_usd", "op": "<=", "value": 500}], "action": "auto_approve"}
+        ],
+        "default_action": "reject",
+        "context": {"seller_ocs": 90, "amount_usd": 300},
+        "expected_action": "auto_approve",
+        "expected_rule_index": 0
+      },
+      {
+        "name": "require_human_high_amount",
+        "rules": [
+          {"conditions": [{"field": "seller_ocs", "op": ">=", "value": 85}, {"field": "amount_usd", "op": "<=", "value": 500}], "action": "auto_approve"},
+          {"conditions": [{"field": "amount_usd", "op": ">", "value": 1000}], "action": "require_human"}
+        ],
+        "default_action": "reject",
+        "context": {"seller_ocs": 90, "amount_usd": 1500},
+        "expected_action": "require_human",
+        "expected_rule_index": 1
+      },
+      {
+        "name": "reject_no_rule_match",
+        "rules": [
+          {"conditions": [{"field": "seller_ocs", "op": ">=", "value": 85}], "action": "auto_approve"}
+        ],
+        "default_action": "reject",
+        "context": {"seller_ocs": 60, "amount_usd": 300},
+        "expected_action": "reject",
+        "expected_matched": false
+      },
+      {
+        "name": "hard_cap_exceeds_max_per_deal",
+        "rules": [
+          {"conditions": [{"field": "seller_ocs", "op": ">=", "value": 1}], "action": "auto_approve"}
+        ],
+        "default_action": "reject",
+        "max_amount_per_deal_usd": 500,
+        "context": {"seller_ocs": 95, "amount_usd": 600},
+        "expected_action": "reject",
+        "expected_reason": "exceeds_max_per_deal"
+      },
+      {
+        "name": "vertical_filter_using_in_op",
+        "rules": [
+          {"conditions": [{"field": "vertical", "op": "in", "value": ["marketing", "saas"]}, {"field": "amount_usd", "op": "<=", "value": 200}], "action": "auto_approve"}
+        ],
+        "default_action": "reject",
+        "context": {"vertical": "marketing", "amount_usd": 100},
+        "expected_action": "auto_approve",
+        "expected_rule_index": 0
+      },
+      {
+        "name": "missing_context_field_fails",
+        "rules": [
+          {"conditions": [{"field": "seller_ocs", "op": ">=", "value": 50}], "action": "auto_approve"}
+        ],
+        "default_action": "reject",
+        "context": {"amount_usd": 100},
+        "expected_action": "reject",
+        "expected_matched": false,
+        "note": "seller_ocs missing from context → condition fails → no match → default"
+      }
+    ],
+    "policy_hash_algorithm": "SHA256(json.dumps({rules, default_action}, sort_keys=True, separators=(',',':')))"
+  },
+  "volume_fee_tiers": {
+    "description": "Volume-based fee compression tiers (v1.2.0). Rolling 30-day window.",
+    "tiers": [
+      {"tier": "enterprise", "min_volume_usd": 1000000, "fee_pct": 0.008, "fee_fixed": 0.05},
+      {"tier": "scale", "min_volume_usd": 100000, "fee_pct": 0.012, "fee_fixed": 0.10},
+      {"tier": "growth", "min_volume_usd": 10000, "fee_pct": 0.020, "fee_fixed": 0.20},
+      {"tier": "starter", "min_volume_usd": 0, "fee_pct": 0.028, "fee_fixed": 0.28}
+    ],
+    "vectors": [
+      {"amount": 1000, "volume_30d": 0, "expected_tier": "starter", "expected_fee": 28.28},
+      {"amount": 1000, "volume_30d": 50000, "expected_tier": "growth", "expected_fee": 20.20},
+      {"amount": 1000, "volume_30d": 200000, "expected_tier": "scale", "expected_fee": 12.10},
+      {"amount": 10000, "volume_30d": 2000000, "expected_tier": "enterprise", "expected_fee": 80.05}
+    ]
+  },
+  "credential_hash_algorithm": {
+    "description": "Reputation attestation credential hash (v1.2.0)",
+    "algorithm": "SHA256(json.dumps({k:v for k,v in credential.items() if k not in ('proof','credentialHash')}, sort_keys=True, separators=(',',':'), default=str))",
+    "excluded_fields": ["proof", "credentialHash"]
+  },
+  "invariants": [
+    "deal_id is the global root key for all entities",
+    "AiGentsy is the only money mover",
+    "All money-moving effects are idempotent and replay-safe",
+    "gross == platform_fee + protocol_fee + net (splits sum invariant)",
+    "Event chains are hash-linked: each event.prev_hash == previous_event.hash",
+    "Sealed bids reveal no prices until intent is closed",
+    "Merkle leaf hashes use 0x00 domain separation (RFC 6962)",
+    "Merkle node hashes use 0x01 domain separation (RFC 6962)",
+    "STH sign input format: {log_id}|{tree_size}|{root_hash}|{timestamp}",
+    "Attestation signatures are over canonical JSON (sorted keys, compact separators)",
+    "Public key canonical source is the runtime endpoint, not static files",
+    "Programmable mandate rules evaluate in order — first match wins",
+    "Programmable mandate hard cap check runs before rule evaluation",
+    "Missing context fields cause conditions to fail (not error)",
+    "Volume fee tiers are classified by rolling 30-day settlement volume",
+    "Credential hash excludes 'proof' and 'credentialHash' fields",
+    "Multi-party settlement splits must sum to 1.0",
+    "Settlement netting is bilateral — each pair is netted independently"
+  ]
+}

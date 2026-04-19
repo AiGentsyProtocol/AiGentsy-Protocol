@@ -1,0 +1,134 @@
+{
+  "benchmark": "delta_curve_v1.5",
+  "adapter": "vllm",
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "base_prompt_tokens": 386,
+  "pairs_per_point": 100,
+  "points": [
+    {
+      "diff_percent": 1,
+      "num_pairs": 100,
+      "uniform": {
+        "avg_full_ms": 400.0,
+        "avg_delta_ms": 228.5,
+        "avg_savings_percent": 42.88,
+        "p50_savings_percent": 42.5,
+        "p95_savings_percent": 45.0,
+        "dominant_mode": "context_patch_delta"
+      },
+      "localized": {
+        "avg_full_ms": 400.0,
+        "avg_delta_ms": 210.9,
+        "avg_savings_percent": 47.27,
+        "p50_savings_percent": 47.5,
+        "p95_savings_percent": 47.5,
+        "dominant_mode": "context_patch_delta"
+      },
+      "proof_completeness_rate": 1.0
+    },
+    {
+      "diff_percent": 5,
+      "num_pairs": 100,
+      "uniform": {
+        "avg_full_ms": 400.0,
+        "avg_delta_ms": 394.0,
+        "avg_savings_percent": 1.5,
+        "p50_savings_percent": 0,
+        "p95_savings_percent": 25.0,
+        "dominant_mode": "full_compute_required"
+      },
+      "localized": {
+        "avg_full_ms": 400.0,
+        "avg_delta_ms": 219.6,
+        "avg_savings_percent": 45.1,
+        "p50_savings_percent": 45.0,
+        "p95_savings_percent": 45.0,
+        "dominant_mode": "context_patch_delta"
+      },
+      "proof_completeness_rate": 1.0
+    },
+    {
+      "diff_percent": 10,
+      "num_pairs": 100,
+      "uniform": {
+        "avg_full_ms": 400.0,
+        "avg_delta_ms": 400.0,
+        "avg_savings_percent": 0,
+        "p50_savings_percent": 0,
+        "p95_savings_percent": 0,
+        "dominant_mode": "full_compute_required"
+      },
+      "localized": {
+        "avg_full_ms": 400.0,
+        "avg_delta_ms": 228.9,
+        "avg_savings_percent": 42.77,
+        "p50_savings_percent": 42.5,
+        "p95_savings_percent": 45.0,
+        "dominant_mode": "context_patch_delta"
+      },
+      "proof_completeness_rate": 1.0
+    },
+    {
+      "diff_percent": 25,
+      "num_pairs": 100,
+      "uniform": {
+        "avg_full_ms": 400.0,
+        "avg_delta_ms": 400.0,
+        "avg_savings_percent": 0,
+        "p50_savings_percent": 0,
+        "p95_savings_percent": 0,
+        "dominant_mode": "full_compute_required"
+      },
+      "localized": {
+        "avg_full_ms": 400.0,
+        "avg_delta_ms": 259.8,
+        "avg_savings_percent": 35.05,
+        "p50_savings_percent": 35.0,
+        "p95_savings_percent": 35.0,
+        "dominant_mode": "context_patch_delta"
+      },
+      "proof_completeness_rate": 1.0
+    },
+    {
+      "diff_percent": 50,
+      "num_pairs": 100,
+      "uniform": {
+        "avg_full_ms": 400.0,
+        "avg_delta_ms": 400.0,
+        "avg_savings_percent": 0,
+        "p50_savings_percent": 0,
+        "p95_savings_percent": 0,
+        "dominant_mode": "full_compute_required"
+      },
+      "localized": {
+        "avg_full_ms": 400.0,
+        "avg_delta_ms": 400.0,
+        "avg_savings_percent": 0,
+        "p50_savings_percent": 0,
+        "p95_savings_percent": 0,
+        "dominant_mode": "full_compute_required"
+      },
+      "proof_completeness_rate": 1.0
+    }
+  ],
+  "breakeven_thresholds": {
+    "uniform": {
+      "diff_percent_at_50_savings": 0.0,
+      "diff_percent_at_25_savings": 2.7,
+      "diff_percent_at_10_savings": 4.2
+    },
+    "localized": {
+      "diff_percent_at_50_savings": 0.0,
+      "diff_percent_at_25_savings": 32.2,
+      "diff_percent_at_10_savings": 42.9
+    }
+  },
+  "what_is_not_claimed": [
+    "Curve measured on Qwen2.5-7B with ~500-token base prompts structured as ~20 blocks.",
+    "Uniform distribution represents a worst case \u2014 diffuse edits across the full prompt.",
+    "Localized distribution represents realistic agent traffic \u2014 contiguous edits within a bounded span.",
+    "Production savings depend on which distribution matches actual agent workload patterns.",
+    "Delta plane is conservative by design: when edits exceed its context-block threshold, it correctly falls back to full compute rather than risk incorrect output.",
+    "Baseline compute cost estimated at 200.0ms per prompt."
+  ]
+}

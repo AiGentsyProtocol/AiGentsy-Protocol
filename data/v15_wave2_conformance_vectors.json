@@ -1,0 +1,28 @@
+{
+  "spec_version": "v15_wave2_conformance/v1",
+
+  "model_routing_vectors": [
+    {"id": "route_01_fast", "mandate": {"routing_tier": "fast"}, "expected_routed_to": "fast"},
+    {"id": "route_02_full", "mandate": {"routing_tier": "full"}, "expected_routed_to": "full"},
+    {"id": "route_03_default", "mandate": {}, "expected_routed_to": "full"},
+    {"id": "route_04_invalid", "mandate": {"routing_tier": "turbo"}, "expected_routed_to": "full"},
+    {"id": "route_05_null_mandate", "mandate": null, "expected_routed_to": "full"}
+  ],
+
+  "budget_enforcement_vectors": [
+    {"id": "budget_01_within", "budget": 1000, "input_tokens": 100, "expected_status": "ok_pre"},
+    {"id": "budget_02_exceeded_pre", "budget": 100, "input_tokens": 500, "expected_status": "exceeded_pre"},
+    {"id": "budget_03_exceeded_post", "ops": [
+      {"action": "check_post", "input": 400, "output": 400, "budget": 500},
+      {"action": "check_post", "input": 200, "output": 200, "budget": 500, "expected_status": "exceeded_post"}
+    ]},
+    {"id": "budget_04_cumulative", "ops": [
+      {"action": "check_post", "input": 100, "output": 50, "budget": 1000},
+      {"action": "check_post", "input": 100, "output": 50, "budget": 1000},
+      {"expected_consumed": 300}
+    ]},
+    {"id": "budget_05_mandate_reset", "invariant": "mandate revision resets budget counter for that mandate only"},
+    {"id": "budget_06_policy_no_reset", "invariant": "policy change does NOT reset budget counters"},
+    {"id": "budget_07_metadata_shape", "required_fields": ["budget_status", "budget_tokens_authorized", "tokens_consumed_this_call", "tokens_consumed_cumulative", "budget_remaining"]}
+  ]
+}

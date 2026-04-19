@@ -1,0 +1,264 @@
+{
+  "spec_version": "settlement_conformance/v1",
+  "description": "Implementation-agnostic conformance vectors for Mandate Graph, Coordination Graph, Value Flow Graph, and settlement workflows. Any implementation can consume these vectors to validate behavior.",
+
+  "mandate_evaluation_vectors": [
+    {
+      "id": "mandate_01_valid_basic",
+      "description": "Valid mandate with all checks passing",
+      "mandate": {
+        "mandate_id": "m_001",
+        "issuer": "agent_issuer",
+        "subject_agent": "agent_worker",
+        "allowed_actions": ["execute", "deliver"],
+        "forbidden_actions": ["delete"],
+        "work_class": ["marketing", "content"],
+        "consequence_rights": ["settlement_request"],
+        "expires_at": "2030-01-01T00:00:00Z",
+        "revoked_at": null,
+        "signature": "valid"
+      },
+      "context": {
+        "subject_agent": "agent_worker",
+        "requested_action": "execute",
+        "requested_work_class": "marketing",
+        "requested_consequence": "settlement_request"
+      },
+      "expected": {
+        "valid": true,
+        "checks_passed": ["signature_valid", "not_expired", "not_revoked", "subject_matches", "action_allowed:execute", "work_class_ok:marketing", "consequence_authorized:settlement_request"],
+        "checks_failed": []
+      }
+    },
+    {
+      "id": "mandate_02_expired",
+      "description": "Mandate expired — should fail on expiry check",
+      "mandate": {
+        "mandate_id": "m_002",
+        "issuer": "agent_issuer",
+        "subject_agent": "agent_worker",
+        "allowed_actions": ["execute"],
+        "expires_at": "2020-01-01T00:00:00Z",
+        "revoked_at": null,
+        "signature": "valid"
+      },
+      "context": {
+        "requested_action": "execute"
+      },
+      "expected": {
+        "valid": false,
+        "checks_failed_contains": ["expired"]
+      }
+    },
+    {
+      "id": "mandate_03_forbidden_action",
+      "description": "Requested action is in forbidden list",
+      "mandate": {
+        "mandate_id": "m_003",
+        "issuer": "agent_issuer",
+        "subject_agent": "agent_worker",
+        "allowed_actions": ["execute", "deliver"],
+        "forbidden_actions": ["delete", "modify"],
+        "expires_at": "2030-01-01T00:00:00Z",
+        "revoked_at": null,
+        "signature": "valid"
+      },
+      "context": {
+        "requested_action": "delete"
+      },
+      "expected": {
+        "valid": false,
+        "checks_failed_contains": ["action_forbidden:delete"]
+      }
+    },
+    {
+      "id": "mandate_04_revoked",
+      "description": "Mandate has been revoked",
+      "mandate": {
+        "mandate_id": "m_004",
+        "issuer": "agent_issuer",
+        "subject_agent": "agent_worker",
+        "revoked_at": "2025-06-01T00:00:00Z",
+        "expires_at": "2030-01-01T00:00:00Z",
+        "signature": "valid"
+      },
+      "context": {},
+      "expected": {
+        "valid": false,
+        "checks_failed_contains": ["revoked"]
+      }
+    },
+    {
+      "id": "mandate_05_subject_mismatch",
+      "description": "Subject agent does not match the mandate",
+      "mandate": {
+        "mandate_id": "m_005",
+        "issuer": "agent_issuer",
+        "subject_agent": "agent_worker_a",
+        "expires_at": "2030-01-01T00:00:00Z",
+        "revoked_at": null,
+        "signature": "valid"
+      },
+      "context": {
+        "subject_agent": "agent_worker_b"
+      },
+      "expected": {
+        "valid": false,
+        "checks_failed_contains": ["subject_mismatch:agent_worker_a!=agent_worker_b"]
+      }
+    }
+  ],
+
+  "coordination_dependency_vectors": [
+    {
+      "id": "coord_01_linear_chain",
+      "description": "Linear dependency: A → B → C. Only A can execute first.",
+      "nodes": [
+        {"commitment_id": "A", "depends_on": [], "status": "pending"},
+        {"commitment_id": "B", "depends_on": ["A"], "status": "pending"},
+        {"commitment_id": "C", "depends_on": ["B"], "status": "pending"}
+      ],
+      "expected_execution_order": [["A"], ["B"], ["C"]],
+      "expected_first_executable": ["A"]
+    },
+    {
+      "id": "coord_02_parallel_independent",
+      "description": "Two independent nodes can execute in parallel.",
+      "nodes": [
+        {"commitment_id": "X", "depends_on": [], "status": "pending"},
+        {"commitment_id": "Y", "depends_on": [], "status": "pending"},
+        {"commitment_id": "Z", "depends_on": ["X", "Y"], "status": "pending"}
+      ],
+      "expected_execution_order": [["X", "Y"], ["Z"]],
+      "expected_first_executable": ["X", "Y"]
+    },
+    {
+      "id": "coord_03_blocked_by_dep",
+      "description": "B depends on A which is not completed — B cannot transition.",
+      "nodes": [
+        {"commitment_id": "A", "depends_on": [], "status": "pending"},
+        {"commitment_id": "B", "depends_on": ["A"], "status": "pending"}
+      ],
+      "transition_request": {"commitment_id": "B", "new_status": "in_progress"},
+      "expected": {
+        "valid": false,
+        "checks_failed_contains": ["dep_not_satisfied:A"]
+      }
+    }
+  ],
+
+  "value_flow_release_vectors": [
+    {
+      "id": "vflow_01_simple_release",
+      "description": "Claim with all dependencies met — eligible for release.",
+      "claims": [
+        {
+          "claim_id": "c_001",
+          "beneficiary": "agent_seller",
+          "amount_usd": 100.0,
+          "status": "eligible",
+          "depends_on_claims": [],
+          "depends_on_commitments": ["cmt_a"],
+          "requires_proof_types": ["completion_photo"],
+          "requires_acceptance": true
+        }
+      ],
+      "context": {
+        "beneficiary": "agent_seller",
+        "satisfied_commitments": ["cmt_a"],
+        "accepted_commitments": ["c_001"],
+        "available_proofs": ["completion_photo"]
+      },
+      "expected": {
+        "valid": true,
+        "checks_failed": []
+      }
+    },
+    {
+      "id": "vflow_02_missing_proof",
+      "description": "Required proof type not available — release blocked.",
+      "claims": [
+        {
+          "claim_id": "c_002",
+          "beneficiary": "agent_seller",
+          "amount_usd": 50.0,
+          "status": "eligible",
+          "depends_on_claims": [],
+          "depends_on_commitments": [],
+          "requires_proof_types": ["completion_photo", "test_results"],
+          "requires_acceptance": false
+        }
+      ],
+      "context": {
+        "available_proofs": ["completion_photo"]
+      },
+      "expected": {
+        "valid": false,
+        "checks_failed_contains": ["proof_missing:test_results"]
+      }
+    },
+    {
+      "id": "vflow_03_held_claim",
+      "description": "Claim is held with a reason — release blocked.",
+      "claims": [
+        {
+          "claim_id": "c_003",
+          "beneficiary": "agent_seller",
+          "amount_usd": 200.0,
+          "status": "held",
+          "hold_reason": "compliance_review",
+          "depends_on_claims": [],
+          "depends_on_commitments": [],
+          "requires_proof_types": [],
+          "requires_acceptance": false
+        }
+      ],
+      "context": {},
+      "expected": {
+        "valid": false,
+        "checks_failed_contains": ["held:compliance_review"]
+      }
+    }
+  ],
+
+  "settlement_workflow_vectors": [
+    {
+      "id": "settle_01_idempotency",
+      "description": "Same deal_id + amount + destination settles once. Second call returns cached result.",
+      "input": {
+        "deal_id": "deal_idem_test",
+        "to_agent": "agent_seller",
+        "amount_usd": 100.0,
+        "provider": "stripe"
+      },
+      "invariant": "Two calls with identical (deal_id, amount, destination, epoch_day) must produce identical results and exactly one provider call."
+    },
+    {
+      "id": "settle_02_fee_deduction",
+      "description": "Settlement fee correctly deducted from gross amount.",
+      "input": {
+        "gross_amount_usd": 100.0,
+        "fee_pct": 0.028,
+        "fee_fixed": 0.28
+      },
+      "expected": {
+        "platform_fee": 3.08,
+        "net_to_agent": 96.92
+      },
+      "note": "platform_fee = (100 * 0.028) + 0.28 = 3.08; net = 100 - 3.08 = 96.92"
+    },
+    {
+      "id": "settle_03_split_integrity",
+      "description": "Multi-party split must sum to gross. No value created or destroyed.",
+      "input": {
+        "gross_amount_usd": 1000.0,
+        "splits": [
+          {"agent": "agent_a", "fraction": 0.6},
+          {"agent": "agent_b", "fraction": 0.3},
+          {"agent": "platform", "fraction": 0.1}
+        ]
+      },
+      "invariant": "sum(splits[].fraction) == 1.0 AND sum(splits[].amount) == gross_amount_usd"
+    }
+  ]
+}

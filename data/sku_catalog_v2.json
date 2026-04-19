@@ -1,0 +1,326 @@
+{
+  "version": "2.0",
+  "generated_at": "2026-01-29T00:00:00Z",
+  "skus": [
+    {
+      "sku_id": "react-component",
+      "title": "React Component Build",
+      "description": "Custom React component with TypeScript, tests, and Storybook docs.",
+      "category": "frontend",
+      "base_price": 350,
+      "rush_price": 420,
+      "sla_minutes": 60,
+      "fulfillment_type": "frontend_component",
+      "scope_bullets": [
+        "Fully typed React/TypeScript component",
+        "Unit tests with >90% coverage",
+        "Storybook documentation included"
+      ],
+      "active": true
+    },
+    {
+      "sku_id": "api-endpoint",
+      "title": "REST API Endpoint",
+      "description": "Production-ready API endpoint with validation, error handling, and docs.",
+      "category": "backend",
+      "base_price": 400,
+      "rush_price": 480,
+      "sla_minutes": 90,
+      "fulfillment_type": "backend_api",
+      "scope_bullets": [
+        "RESTful endpoint with full CRUD",
+        "Input validation & error handling",
+        "OpenAPI/Swagger documentation"
+      ],
+      "active": true
+    },
+    {
+      "sku_id": "bug-fix-triage",
+      "title": "Bug Fix & Triage",
+      "description": "Diagnose and fix a bug with root cause analysis and regression test.",
+      "category": "development",
+      "base_price": 150,
+      "rush_price": 180,
+      "sla_minutes": 30,
+      "fulfillment_type": "bug_fix",
+      "scope_bullets": [
+        "Root cause analysis report",
+        "Fix with regression test",
+        "Prevention recommendations"
+      ],
+      "active": true
+    },
+    {
+      "sku_id": "landing-page",
+      "title": "Landing Page Build",
+      "description": "Conversion-optimized landing page with responsive design and CTA.",
+      "category": "frontend",
+      "base_price": 500,
+      "rush_price": 600,
+      "sla_minutes": 120,
+      "fulfillment_type": "landing_page",
+      "scope_bullets": [
+        "Responsive HTML/CSS/JS landing page",
+        "Conversion-optimized layout & CTA",
+        "Mobile-first design"
+      ],
+      "active": true
+    },
+    {
+      "sku_id": "shopify-theme-fix",
+      "title": "Shopify Theme Fix",
+      "description": "Fix Shopify theme issues including Liquid template bugs and CSS fixes.",
+      "category": "frontend",
+      "base_price": 250,
+      "rush_price": 300,
+      "sla_minutes": 45,
+      "fulfillment_type": "shopify_fix",
+      "scope_bullets": [
+        "Liquid template diagnosis & fix",
+        "CSS/responsive corrections",
+        "Cross-browser verification"
+      ],
+      "active": true
+    },
+    {
+      "sku_id": "zapier-workflow",
+      "title": "Zapier Workflow Setup",
+      "description": "Multi-step Zapier automation with triggers, filters, and error handling.",
+      "category": "automation",
+      "base_price": 200,
+      "rush_price": 240,
+      "sla_minutes": 45,
+      "fulfillment_type": "automation_workflow",
+      "scope_bullets": [
+        "Multi-step Zap configuration",
+        "Error handling & retry logic",
+        "Testing & documentation"
+      ],
+      "active": true
+    },
+    {
+      "sku_id": "data-pipeline",
+      "title": "Data Pipeline Build",
+      "description": "ETL pipeline with data validation, transformation, and scheduling.",
+      "category": "data",
+      "base_price": 600,
+      "rush_price": 720,
+      "sla_minutes": 120,
+      "fulfillment_type": "data_pipeline",
+      "scope_bullets": [
+        "Extract-Transform-Load pipeline",
+        "Data validation & error handling",
+        "Scheduled execution setup"
+      ],
+      "active": true
+    },
+    {
+      "sku_id": "email-sequence",
+      "title": "Email Sequence Setup",
+      "description": "Automated email drip sequence with templates and trigger configuration.",
+      "category": "automation",
+      "base_price": 300,
+      "rush_price": 360,
+      "sla_minutes": 60,
+      "fulfillment_type": "email_automation",
+      "scope_bullets": [
+        "Multi-email drip sequence",
+        "Template design & copywriting",
+        "Trigger & segmentation setup"
+      ],
+      "active": true
+    },
+    {
+      "sku_id": "logo-design",
+      "title": "Logo Design",
+      "description": "Professional logo with 3 concepts, revisions, and source files.",
+      "category": "design",
+      "base_price": 250,
+      "rush_price": 300,
+      "sla_minutes": 60,
+      "fulfillment_type": "logo_design",
+      "scope_bullets": [
+        "3 initial logo concepts",
+        "2 rounds of revisions",
+        "Vector source files (SVG/AI)"
+      ],
+      "active": true
+    },
+    {
+      "sku_id": "ui-mockup",
+      "title": "UI/UX Mockup",
+      "description": "High-fidelity UI mockup with interactive prototype and design specs.",
+      "category": "design",
+      "base_price": 400,
+      "rush_price": 480,
+      "sla_minutes": 90,
+      "fulfillment_type": "ui_mockup",
+      "scope_bullets": [
+        "High-fidelity screen mockups",
+        "Interactive Figma prototype",
+        "Design specs & asset export"
+      ],
+      "active": true
+    },
+    {
+      "sku_id": "social-media-kit",
+      "title": "Social Media Kit",
+      "description": "Brand-consistent social media templates for multiple platforms.",
+      "category": "design",
+      "base_price": 350,
+      "rush_price": 420,
+      "sla_minutes": 60,
+      "fulfillment_type": "social_media_design",
+      "scope_bullets": [
+        "Templates for 3+ platforms",
+        "Brand guideline alignment",
+        "Editable source files"
+      ],
+      "active": true
+    },
+    {
+      "sku_id": "blog-post-seo",
+      "title": "SEO Blog Post",
+      "description": "SEO-optimized blog post with keyword research and meta tags.",
+      "category": "content",
+      "base_price": 150,
+      "rush_price": 180,
+      "sla_minutes": 45,
+      "fulfillment_type": "blog_content",
+      "scope_bullets": [
+        "1500-2000 word SEO article",
+        "Keyword research & optimization",
+        "Meta title & description"
+      ],
+      "active": true
+    },
+    {
+      "sku_id": "email-copy-set",
+      "title": "Email Copy Set",
+      "description": "Set of 5 marketing emails with subject lines and CTAs.",
+      "category": "content",
+      "base_price": 200,
+      "rush_price": 240,
+      "sla_minutes": 45,
+      "fulfillment_type": "email_copy",
+      "scope_bullets": [
+        "5 email drafts with subject lines",
+        "A/B test variants for top performers",
+        "CTA optimization"
+      ],
+      "active": true
+    },
+    {
+      "sku_id": "product-descriptions",
+      "title": "Product Descriptions",
+      "description": "SEO-friendly product descriptions for e-commerce listings.",
+      "category": "content",
+      "base_price": 100,
+      "rush_price": 120,
+      "sla_minutes": 30,
+      "fulfillment_type": "product_copy",
+      "scope_bullets": [
+        "10 product descriptions",
+        "SEO keyword integration",
+        "Benefit-focused copywriting"
+      ],
+      "active": true
+    },
+    {
+      "sku_id": "analytics-dashboard",
+      "title": "Analytics Dashboard",
+      "description": "Interactive analytics dashboard with key metrics and visualizations.",
+      "category": "data",
+      "base_price": 500,
+      "rush_price": 600,
+      "sla_minutes": 90,
+      "fulfillment_type": "analytics_dashboard",
+      "scope_bullets": [
+        "Interactive dashboard with KPIs",
+        "Data source integration",
+        "Export & scheduling setup"
+      ],
+      "active": true
+    },
+    {
+      "sku_id": "data-cleanup",
+      "title": "Data Cleanup & Normalization",
+      "description": "Clean, deduplicate, and normalize messy datasets.",
+      "category": "data",
+      "base_price": 300,
+      "rush_price": 360,
+      "sla_minutes": 60,
+      "fulfillment_type": "data_cleanup",
+      "scope_bullets": [
+        "Deduplication & normalization",
+        "Missing value handling",
+        "Quality report & validation"
+      ],
+      "active": true
+    },
+    {
+      "sku_id": "db-migration",
+      "title": "Database Migration",
+      "description": "Schema migration with data transfer, validation, and rollback plan.",
+      "category": "backend",
+      "base_price": 450,
+      "rush_price": 540,
+      "sla_minutes": 120,
+      "fulfillment_type": "db_migration",
+      "scope_bullets": [
+        "Schema migration scripts",
+        "Data transfer & validation",
+        "Rollback plan included"
+      ],
+      "active": true
+    },
+    {
+      "sku_id": "responsive-page",
+      "title": "Responsive Page Conversion",
+      "description": "Convert existing page to fully responsive mobile-first design.",
+      "category": "frontend",
+      "base_price": 350,
+      "rush_price": 420,
+      "sla_minutes": 60,
+      "fulfillment_type": "responsive_conversion",
+      "scope_bullets": [
+        "Mobile-first responsive redesign",
+        "Cross-device testing",
+        "Performance optimization"
+      ],
+      "active": true
+    },
+    {
+      "sku_id": "ad-creative-set",
+      "title": "Ad Creative Set",
+      "description": "Multi-format ad creatives for paid campaigns across platforms.",
+      "category": "marketing",
+      "base_price": 300,
+      "rush_price": 360,
+      "sla_minutes": 60,
+      "fulfillment_type": "ad_creative",
+      "scope_bullets": [
+        "Creatives for 3+ ad platforms",
+        "A/B test variants",
+        "Copy + visual assets"
+      ],
+      "active": true
+    },
+    {
+      "sku_id": "landing-page-copy",
+      "title": "Landing Page Copy",
+      "description": "Conversion-focused landing page copy with headline variants and CTAs.",
+      "category": "marketing",
+      "base_price": 200,
+      "rush_price": 240,
+      "sla_minutes": 45,
+      "fulfillment_type": "landing_copy",
+      "scope_bullets": [
+        "Headline & subhead variants",
+        "Benefit-driven body copy",
+        "CTA optimization"
+      ],
+      "active": true
+    }
+  ]
+}

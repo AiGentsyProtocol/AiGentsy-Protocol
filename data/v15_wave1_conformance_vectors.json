@@ -1,0 +1,53 @@
+{
+  "spec_version": "v15_wave1_conformance/v1",
+
+  "negative_cache_vectors": [
+    {"id": "neg_01_miss_then_hit", "ops": [
+      {"op": "lookup", "triple": ["p1","m1","v1"], "expected": "miss"},
+      {"op": "register", "triple": ["p1","m1","v1"], "type": "policy_violation"},
+      {"op": "lookup", "triple": ["p1","m1","v1"], "expected": "hit"}
+    ]},
+    {"id": "neg_02_policy_invalidation", "ops": [
+      {"op": "register", "triple": ["p1","m1","v1"], "type": "risk_exceeded"},
+      {"op": "invalidate_policy", "version": "v1", "expected_count": 1},
+      {"op": "lookup", "triple": ["p1","m1","v1"], "expected": "miss"}
+    ]},
+    {"id": "neg_03_mandate_invalidation_scoped", "ops": [
+      {"op": "register", "triple": ["p1","m1","v1"], "type": "mandate_out_of_scope"},
+      {"op": "register", "triple": ["p2","m2","v1"], "type": "policy_violation"},
+      {"op": "invalidate_mandate", "mandate": "m1", "expected_count": 1},
+      {"op": "lookup", "triple": ["p1","m1","v1"], "expected": "miss"},
+      {"op": "lookup", "triple": ["p2","m2","v1"], "expected": "hit"}
+    ]},
+    {"id": "neg_04_refusal_metadata", "fields_required": ["refusal_hash","triple_hash","refusal_type","reason","mandate_id","policy_version","created_at","valid"]},
+    {"id": "neg_05_invalidation_preserves", "invariant": "invalidation sets valid=false, does not delete entries"}
+  ],
+
+  "pre_approval_vectors": [
+    {"id": "pa_01_emit_and_lookup", "ops": [
+      {"op": "emit", "mandate_id": "m1", "agent": "a1", "policy_hash": "ph1"},
+      {"op": "lookup", "mandate_id": "m1", "agent": "a1", "policy_hash": "ph1", "expected": "found"}
+    ]},
+    {"id": "pa_02_policy_invalidation", "ops": [
+      {"op": "emit", "mandate_id": "m1", "agent": "a1", "policy_hash": "ph1"},
+      {"op": "invalidate_policy", "version": "ph1", "expected_count": 1},
+      {"op": "lookup", "mandate_id": "m1", "agent": "a1", "policy_hash": "ph1", "expected": "not_found"}
+    ]},
+    {"id": "pa_03_mandate_invalidation", "ops": [
+      {"op": "emit", "mandate_id": "m1", "agent": "a1", "policy_hash": "ph1"},
+      {"op": "emit", "mandate_id": "m2", "agent": "a1", "policy_hash": "ph1"},
+      {"op": "invalidate_mandate", "mandate": "m1", "expected_count": 1},
+      {"op": "lookup", "mandate_id": "m1", "agent": "a1", "policy_hash": "ph1", "expected": "not_found"},
+      {"op": "lookup", "mandate_id": "m2", "agent": "a1", "policy_hash": "ph1", "expected": "found"}
+    ]},
+    {"id": "pa_04_schema", "fields_required": ["attestation_type","pre_approval_id","mandate_id","agent_id","policy_version","authorized_at","authorization_scope","expires_on","attestation_hash","signature"]},
+    {"id": "pa_05_optional_not_blocking", "invariant": "missing pre-approval does not block compute — pre-approval is optional enhancement"},
+    {"id": "pa_06_cross_reference", "invariant": "governance attestation includes authorized_by_pre_approval field when pre-approval exists"}
+  ],
+
+  "verifier_session_vectors": [
+    {"id": "vs_01_correctness", "invariant": "VerifierSession.verify_bundle produces identical verified/not-verified outcomes as standalone verify_bundle"},
+    {"id": "vs_02_cache_hit", "invariant": "second verification of bundle under same STH skips STH signature check"},
+    {"id": "vs_03_lru_bounded", "invariant": "session cache size bounded by max_cached_snapshots parameter"}
+  ]
+}

@@ -1,0 +1,261 @@
+{
+  "benchmark": "v1.6_delta_reuse",
+  "scenarios": [
+    {
+      "scenario": "cold_cache",
+      "label": "cold_cache",
+      "total": 200,
+      "exact_hits": 0,
+      "near_miss_hits": 0,
+      "full_compute": 200,
+      "exact_hit_rate": 0.0,
+      "near_miss_rate": 0.0,
+      "combined_hit_rate": 0.0,
+      "wall_ms": 894.994,
+      "proof_completeness_rate": 1.0
+    },
+    {
+      "scenario": "warm_mixed",
+      "label": "warm_mixed",
+      "total": 1000,
+      "exact_hits": 27,
+      "near_miss_hits": 592,
+      "full_compute": 381,
+      "exact_hit_rate": 0.027,
+      "near_miss_rate": 0.592,
+      "combined_hit_rate": 0.619,
+      "wall_ms": 227139.267,
+      "proof_completeness_rate": 1.0
+    },
+    {
+      "scenario": "near_miss_dominant",
+      "label": "near_miss_dominant",
+      "total": 1000,
+      "exact_hits": 0,
+      "near_miss_hits": 1000,
+      "full_compute": 0,
+      "exact_hit_rate": 0.0,
+      "near_miss_rate": 1.0,
+      "combined_hit_rate": 1.0,
+      "wall_ms": 359755.504,
+      "proof_completeness_rate": 1.0
+    },
+    {
+      "scenario": "policy_rotation",
+      "pre": {
+        "label": "pre_rotation",
+        "total": 500,
+        "exact_hits": 0,
+        "near_miss_hits": 473,
+        "full_compute": 27,
+        "exact_hit_rate": 0.0,
+        "near_miss_rate": 0.946,
+        "combined_hit_rate": 0.946,
+        "wall_ms": 173655.521,
+        "proof_completeness_rate": 1.0
+      },
+      "post": {
+        "label": "post_rotation",
+        "total": 500,
+        "exact_hits": 0,
+        "near_miss_hits": 468,
+        "full_compute": 32,
+        "exact_hit_rate": 0.0,
+        "near_miss_rate": 0.936,
+        "combined_hit_rate": 0.936,
+        "wall_ms": 179885.662,
+        "proof_completeness_rate": 1.0
+      },
+      "proof_completeness_rate": 1.0
+    },
+    {
+      "scenario": "semantic_correctness",
+      "num_pairs": 51,
+      "by_diff_group": {
+        "5%": {
+          "pairs": 17,
+          "exact_match_rate": 0.0,
+          "avg_normalized_edit_distance": 0.8745,
+          "avg_length_ratio": 0.1255,
+          "expected_length_ratio": 0.1294
+        },
+        "10%": {
+          "pairs": 17,
+          "exact_match_rate": 0.0,
+          "avg_normalized_edit_distance": 0.8366,
+          "avg_length_ratio": 0.1647,
+          "expected_length_ratio": 0.1853
+        },
+        "15%": {
+          "pairs": 17,
+          "exact_match_rate": 0.0,
+          "avg_normalized_edit_distance": 0.7814,
+          "avg_length_ratio": 0.2372,
+          "expected_length_ratio": 0.2412
+        }
+      },
+      "prefix_alignment_rate": 0.9412,
+      "length_ratio_accuracy_rate": 1.0,
+      "overall_avg_normalized_edit_distance": 0.8308,
+      "verdict": "PASS",
+      "verdict_note": "All three criteria met.",
+      "sample_triples": [
+        {
+          "diff_percent": 5.0,
+          "prompt_varied": "Summarize the key risks in this agreement: The master services agreement between Acme Grid Systems and Blue Horizon Analytics is effective from 2025-06-01 and terminates on 2028-05-31 unless renewed. Annual fee is $360,000 payable quarterly in arrears. Late fees accrue at 1.5% monthly on unpaid balances beyond net 30. Either party may terminate for convenience with 90 days written notice. Data-retention obligations survive termination for 7 years. Governing law is Delaware. Liability is capped a",
+          "completion_full": " 1. **Termination for Convenience**: Both parties can terminate the agreement with 90 days' notice, which could disrupt ongoing projects and cause financial losses.\n2. **Late Fees**: Non-payment of fees can result in significant financial penalties, as late fees accrue at 1.5",
+          "completion_delta": " 1. **Termination for Convenience**: Both",
+          "was_delta_hit": true,
+          "delta_meta": {
+            "delta_within_reuse": true,
+            "delta_baseline_hash": "sem_bundle_5_0",
+            "diff_percent": 4.69,
+            "delta_mode": "context_patch_delta",
+            "delta_size_estimate": 0.1,
+            "baseline_max_tokens": 60,
+            "delta_max_tokens": 10,
+            "original_prompt_hash": "7dc14ad0c7f22ee1"
+          }
+        },
+        {
+          "diff_percent": 5.0,
+          "prompt_varied": "Summarize the key risks in this agreement: The master services agreement between Acme Grid Systems and Blue Horizon Analytics is effective from 2025-06-01 and terminates on 2028-05-31 unless renewed. Annual fee is $360,000 payable quarterly in arrears. Late fees accrue at 1.5% monthly on amended new provisional new modified modified party may terminate for convenience with 90 days written notice. Data-retention obligations survive termination for 7 years. Governing law is Delaware. Liability is ",
+          "completion_full": " 1. Financial risk: The agreement obligates Acme Grid Systems to pay a significant annual fee, which could be a financial burden if the company's financial situation changes. 2. Termination risk: The agreement allows for termination by either party with 90 days' notice, which could",
+          "completion_delta": " 1. Financial risk: The agreement obligates",
+          "was_delta_hit": true,
+          "delta_meta": {
+            "delta_within_reuse": true,
+            "delta_baseline_hash": "sem_bundle_5_1",
+            "diff_percent": 4.69,
+            "delta_mode": "context_patch_delta",
+            "delta_size_estimate": 0.15,
+            "baseline_max_tokens": 60,
+            "delta_max_tokens": 10,
+            "original_prompt_hash": "7dc14ad0c7f22ee1"
+          }
+        },
+        {
+          "diff_percent": 5.0,
+          "prompt_varied": "Summarize the key risks in this agreement: The master services agreement between Acme Grid Systems and Blue Horizon amended amended replacement modified provisional modified terminates on 2028-05-31 unless renewed. Annual fee is $360,000 payable quarterly in arrears. Late fees accrue at 1.5% monthly on unpaid balances beyond net 30. Either party may terminate for convenience with 90 days written notice. Data-retention obligations survive termination for 7 years. Governing law is Delaware. Liabil",
+          "completion_full": " \n\n1. **Termination for Convenience**: Both parties can terminate the agreement with 90 days' notice, which could disrupt ongoing projects or operations.\n2. **Late Fees**: Non-payment can result in significant financial penalties, as late fees accrue at 1.5% per month on",
+          "completion_delta": " \n\n1. **Termination for Convenience**: Both",
+          "was_delta_hit": true,
+          "delta_meta": {
+            "delta_within_reuse": true,
+            "delta_baseline_hash": "sem_bundle_5_2",
+            "diff_percent": 4.69,
+            "delta_mode": "context_patch_delta",
+            "delta_size_estimate": 0.1,
+            "baseline_max_tokens": 60,
+            "delta_max_tokens": 10,
+            "original_prompt_hash": "7dc14ad0c7f22ee1"
+          }
+        },
+        {
+          "diff_percent": 10.0,
+          "prompt_varied": "Summarize the key risks in this agreement: The master services agreement between Acme Grid Systems and Blue Horizon Analytics is effective from 2025-06-01 and terminates on 2028-05-31 unless renewed. Annual fee is $360,000 payable quarterly in arrears. Late fees accrue at 1.5% monthly on unpaid balances beyond net 30. Either party may terminate for convenience with 90 days written notice. Data-retention obligations survive termination for 7 years. Governing law is Delaware. Liability is capped a",
+          "completion_full": " 1. **Termination for Convenience**: Both parties have the right to terminate the agreement with 90 days' notice, which could disrupt ongoing projects and cause financial losses if the agreement is not renewed.\n2. **Late Fees**: Non-payment of fees beyond the net 30 period can",
+          "completion_delta": " 1. **Termination for Convenience**: Both parties have",
+          "was_delta_hit": true,
+          "delta_meta": {
+            "delta_within_reuse": true,
+            "delta_baseline_hash": "sem_bundle_10_0",
+            "diff_percent": 9.38,
+            "delta_mode": "context_patch_delta",
+            "delta_size_estimate": 0.2,
+            "baseline_max_tokens": 60,
+            "delta_max_tokens": 12,
+            "original_prompt_hash": "7dc14ad0c7f22ee1"
+          }
+        },
+        {
+          "diff_percent": 10.0,
+          "prompt_varied": "Summarize the key risks in this agreement: The master services agreement between Acme Grid Systems and Blue Horizon Analytics is effective from 2025-06-01 and terminates on 2028-05-31 unless renewed. Annual fee is $360,000 payable quarterly updated modified revised replacement new modified substitute changed updated substitute new amended net 30. Either party may terminate for convenience with 90 days written notice. Data-retention obligations survive termination for 7 years. Governing law is De",
+          "completion_full": " 1. **Termination for Convenience**: Both parties have the right to terminate the agreement with 90 days' notice, which could disrupt ongoing projects and cause financial losses.\n2. **Data Retention**: Data retention obligations survive termination for 7 years, which could pose compliance and data management",
+          "completion_delta": " 1. **Termination for Convenience**: Both parties have",
+          "was_delta_hit": true,
+          "delta_meta": {
+            "delta_within_reuse": true,
+            "delta_baseline_hash": "sem_bundle_10_1",
+            "diff_percent": 9.38,
+            "delta_mode": "context_patch_delta",
+            "delta_size_estimate": 0.2,
+            "baseline_max_tokens": 60,
+            "delta_max_tokens": 12,
+            "original_prompt_hash": "7dc14ad0c7f22ee1"
+          }
+        },
+        {
+          "diff_percent": 10.0,
+          "prompt_varied": "Summarize updated modified alternative amended alternative revised substitute changed alternative modified provisional replacement Grid Systems and Blue Horizon Analytics is effective from 2025-06-01 and terminates on 2028-05-31 unless renewed. Annual fee is $360,000 payable quarterly in arrears. Late fees accrue at 1.5% monthly on unpaid balances beyond net 30. Either party may terminate for convenience with 90 days written notice. Data-retention obligations survive termination for 7 years. Gov",
+          "completion_full": " cybersecurity, data breaches, regulatory changes, and market volatility. The agreement is for Grid Systems and Blue Horizon Analytics, effective from June 1, 2025, to May 31, 2028, unless renewed. The annual fee is $360,0",
+          "completion_delta": " cybersecurity, data breaches, regulatory changes, and market",
+          "was_delta_hit": true,
+          "delta_meta": {
+            "delta_within_reuse": true,
+            "delta_baseline_hash": "sem_bundle_10_2",
+            "diff_percent": 9.38,
+            "delta_mode": "context_patch_delta",
+            "delta_size_estimate": 0.15,
+            "baseline_max_tokens": 60,
+            "delta_max_tokens": 10,
+            "original_prompt_hash": "7dc14ad0c7f22ee1"
+          }
+        },
+        {
+          "diff_percent": 15.0,
+          "prompt_varied": "Summarize the key risks in this agreement: The master services agreement between Acme Grid Systems and Blue Horizon Analytics is effective from 2025-06-01 replacement replacement updated updated provisional new amended provisional alternative modified new modified revised new provisional replacement revised amended new monthly on unpaid balances beyond net 30. Either party may terminate for convenience with 90 days written notice. Data-retention obligations survive termination for 7 years. Gover",
+          "completion_full": " 1. **Termination for Convenience**: The agreement allows either party to terminate the contract with 90 days' notice, which means either Acme Grid Systems or Blue Horizon Analytics can end the agreement without cause, potentially disrupting ongoing projects or services.\n\n2. **Data Retention**: Data-ret",
+          "completion_delta": " 1. **Termination for Convenience**: The agreement allows either party to",
+          "was_delta_hit": true,
+          "delta_meta": {
+            "delta_within_reuse": true,
+            "delta_baseline_hash": "sem_bundle_15_0",
+            "diff_percent": 14.84,
+            "delta_mode": "context_patch_delta",
+            "delta_size_estimate": 0.25,
+            "baseline_max_tokens": 60,
+            "delta_max_tokens": 15,
+            "original_prompt_hash": "7dc14ad0c7f22ee1"
+          }
+        },
+        {
+          "diff_percent": 15.0,
+          "prompt_varied": "Summarize the key risks in this agreement: The master services agreement between Acme Grid Systems and Blue Horizon Analytics is effective from 2025-06-01 and terminates on 2028-05-31 unless renewed. Annual fee is $360,000 payable quarterly in arrears. Late fees accrue at 1.5% monthly on updated amended substitute amended replacement alternative modified alternative changed modified updated new provisional changed substitute provisional substitute provisional new termination for 7 years. Governi",
+          "completion_full": " 1. Financial risk: The agreement has a fixed annual fee of $360,000, which must be paid quarterly in arrears. Late payments will incur a 1.5% monthly late fee, which could lead to significant financial penalties if not managed properly. ",
+          "completion_delta": " 1. Financial risk: The agreement has a fixed annual fee of $",
+          "was_delta_hit": true,
+          "delta_meta": {
+            "delta_within_reuse": true,
+            "delta_baseline_hash": "sem_bundle_15_1",
+            "diff_percent": 14.84,
+            "delta_mode": "context_patch_delta",
+            "delta_size_estimate": 0.25,
+            "baseline_max_tokens": 60,
+            "delta_max_tokens": 15,
+            "original_prompt_hash": "7dc14ad0c7f22ee1"
+          }
+        },
+        {
+          "diff_percent": 15.0,
+          "prompt_varied": "Summarize the key risks in this agreement: The master services agreement between Acme Grid Systems and Blue Horizon Analytics is effective from 2025-06-01 and terminates on 2028-05-31 unless renewed. Annual fee is $360,000 payable quarterly in arrears. Late fees accrue at 1.5% monthly on unpaid balances beyond net 30. Either party may terminate for convenience with 90 days written notice. Data-retention obligations survive termination for 7 years. Governing law is Delaware. Liability is capped a",
+          "completion_full": " \n\n1. **Termination for Convenience**: Both parties can terminate the agreement with 90 days' notice, which could disrupt ongoing projects or plans.\n2. **Late Fees**: Non-payment of the quarterly fees can result in significant financial penalties, as late fees accrue at 1.5",
+          "completion_delta": " \n\n1. **Termination for Convenience**: Both parties can terminate the agreement",
+          "was_delta_hit": true,
+          "delta_meta": {
+            "delta_within_reuse": true,
+            "delta_baseline_hash": "sem_bundle_15_2",
+            "diff_percent": 14.84,
+            "delta_mode": "context_patch_delta",
+            "delta_size_estimate": 0.25,
+            "baseline_max_tokens": 60,
+            "delta_max_tokens": 15,
+            "original_prompt_hash": "7dc14ad0c7f22ee1"
+          }
+        }
+      ],
+      "proof_completeness_rate": 1.0,
+      "note": "CUDA-validated"
+    }
+  ]
+}

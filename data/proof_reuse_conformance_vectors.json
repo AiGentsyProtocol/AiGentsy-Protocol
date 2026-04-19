@@ -1,0 +1,94 @@
+{
+  "spec_version": "proof_reuse_conformance/v1",
+  "description": "Implementation-agnostic conformance vectors for proof-bundle reuse across agents.",
+
+  "cache_semantics_vectors": [
+    {
+      "id": "reuse_01_miss_then_hit",
+      "description": "First lookup misses; after register, second lookup hits.",
+      "operations": [
+        {"op": "lookup", "triple": ["prompt_a", "mandate_1", "policy_v1"], "expected": "miss"},
+        {"op": "register", "triple": ["prompt_a", "mandate_1", "policy_v1"], "bundle_hash": "hash_abc", "deal_id": "deal_001"},
+        {"op": "lookup", "triple": ["prompt_a", "mandate_1", "policy_v1"], "expected": "hit", "expected_bundle_hash": "hash_abc"}
+      ]
+    },
+    {
+      "id": "reuse_02_different_triple_misses",
+      "description": "Registered triple does not match a different triple.",
+      "operations": [
+        {"op": "register", "triple": ["prompt_a", "mandate_1", "policy_v1"], "bundle_hash": "h1", "deal_id": "d1"},
+        {"op": "lookup", "triple": ["prompt_a", "mandate_1", "policy_v2"], "expected": "miss"},
+        {"op": "lookup", "triple": ["prompt_a", "mandate_2", "policy_v1"], "expected": "miss"},
+        {"op": "lookup", "triple": ["prompt_b", "mandate_1", "policy_v1"], "expected": "miss"}
+      ]
+    },
+    {
+      "id": "reuse_03_policy_invalidation",
+      "description": "Policy change invalidates all entries for that policy version.",
+      "operations": [
+        {"op": "register", "triple": ["p1", "m1", "v1"], "bundle_hash": "h1", "deal_id": "d1"},
+        {"op": "register", "triple": ["p2", "m2", "v1"], "bundle_hash": "h2", "deal_id": "d2"},
+        {"op": "register", "triple": ["p3", "m3", "v2"], "bundle_hash": "h3", "deal_id": "d3"},
+        {"op": "invalidate_policy", "policy_version": "v1", "expected_count": 2},
+        {"op": "lookup", "triple": ["p1", "m1", "v1"], "expected": "miss"},
+        {"op": "lookup", "triple": ["p2", "m2", "v1"], "expected": "miss"},
+        {"op": "lookup", "triple": ["p3", "m3", "v2"], "expected": "hit"}
+      ]
+    },
+    {
+      "id": "reuse_04_mandate_invalidation",
+      "description": "Mandate revision invalidates only that mandate's entries.",
+      "operations": [
+        {"op": "register", "triple": ["p1", "m1", "v1"], "bundle_hash": "h1", "deal_id": "d1"},
+        {"op": "register", "triple": ["p2", "m2", "v1"], "bundle_hash": "h2", "deal_id": "d2"},
+        {"op": "invalidate_mandate", "mandate_id": "m1", "expected_count": 1},
+        {"op": "lookup", "triple": ["p1", "m1", "v1"], "expected": "miss"},
+        {"op": "lookup", "triple": ["p2", "m2", "v1"], "expected": "hit"}
+      ]
+    },
+    {
+      "id": "reuse_05_invalidation_preserves_not_deletes",
+      "description": "Invalidation marks valid=False but does not delete entries.",
+      "operations": [
+        {"op": "register", "triple": ["p1", "m1", "v1"], "bundle_hash": "h1", "deal_id": "d1"},
+        {"op": "invalidate_policy", "policy_version": "v1", "expected_count": 1},
+        {"op": "stats", "expected_size": 1, "expected_invalidated": 1}
+      ]
+    },
+    {
+      "id": "reuse_06_triple_hash_deterministic",
+      "description": "Same triple always produces the same hash.",
+      "triple": ["prompt_x", "mandate_y", "policy_z"],
+      "expected_hash_prefix": "sha256 of 'prompt_x|mandate_y|policy_z' truncated to 24 hex chars",
+      "invariant": "two calls with identical triple produce identical hash"
+    },
+    {
+      "id": "reuse_07_hit_metadata_structure",
+      "description": "Cache hit returns metadata with cached=true, original_deal_id, and original_bundle_hash.",
+      "hit_metadata_required_fields": ["cached", "original_deal_id", "original_bundle_hash", "reuse_timestamp", "triple_hash"]
+    },
+    {
+      "id": "reuse_08_persistence_roundtrip",
+      "description": "Cache state survives process restart via JSON persistence.",
+      "operations": [
+        {"op": "register", "triple": ["p1", "m1", "v1"], "bundle_hash": "h1", "deal_id": "d1"},
+        {"op": "persist"},
+        {"op": "new_instance_from_same_file"},
+        {"op": "lookup", "triple": ["p1", "m1", "v1"], "expected": "hit"}
+      ]
+    }
+  ],
+
+  "triple_composition": {
+    "prompt_instance_id": "deterministic hash of proof content (proof_type:source:agent:deal_id:proof_data)",
+    "mandate_id": "the mandate_id from the mandate graph, if present",
+    "policy_version": "SHA-256 hash of the active PolicySnapshot at proof creation time"
+  },
+
+  "invalidation_rules": {
+    "policy_change": "all entries with the prior policy_version are marked valid=False",
+    "mandate_revision": "all entries with the revised mandate_id are marked valid=False",
+    "time_based_expiry": "none — institutional records are permanent by design",
+    "deletion": "never — invalidation marks, does not delete. Merkle log retains original proof."
+  }
+}

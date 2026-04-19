@@ -1,0 +1,128 @@
+{
+  "version": 2,
+  "half_life_observations": 20,
+  "cache_pressure_factor": 1.0,
+  "records": [
+    {
+      "shape_id": "bom_extract",
+      "runtime_name": "reference_sim",
+      "model_name": "reference_sim",
+      "observations": 22,
+      "ewma_prefill_tokens_avoided": 0.0,
+      "ewma_queue_ms_saved": 0.0,
+      "ewma_kv_bytes": 4398.882552664637,
+      "ewma_overhead_ms": 0.0,
+      "preserve_count": 20,
+      "reuse_count": 0,
+      "waste_count": 0,
+      "total_residency_waves": 40,
+      "net_value_history": [
+        -17.22616565913256,
+        -16.759044894720766,
+        -16.255003224542705,
+        -15.76813106402576,
+        -15.29774136562709,
+        -15.384578473233864,
+        -15.468866354222907,
+        -15.54997650751864,
+        -15.57569537942054,
+        -15.599516261997294,
+        -15.62303667293136,
+        -15.210626558009796,
+        -14.812673409643887,
+        -14.42796943338756,
+        -14.003741515028619,
+        -13.592942446809298
+      ]
+    },
+    {
+      "shape_id": "clinical_qa",
+      "runtime_name": "reference_sim",
+      "model_name": "reference_sim",
+      "observations": 8,
+      "ewma_prefill_tokens_avoided": 0.0,
+      "ewma_queue_ms_saved": 0.0,
+      "ewma_kv_bytes": 5219.798934102829,
+      "ewma_overhead_ms": 0.0,
+      "preserve_count": 8,
+      "reuse_count": 0,
+      "waste_count": 0,
+      "total_residency_waves": 12,
+      "net_value_history": [
+        -17.646,
+        -17.646,
+        -17.60921123523883,
+        -17.57571945112426,
+        -17.089946994446105,
+        -16.62072173094961,
+        -16.130691237727845
+      ]
+    },
+    {
+      "shape_id": "contract_review",
+      "runtime_name": "reference_sim",
+      "model_name": "reference_sim",
+      "observations": 50,
+      "ewma_prefill_tokens_avoided": 0.0,
+      "ewma_queue_ms_saved": 0.0,
+      "ewma_kv_bytes": 3496.1729507949713,
+      "ewma_overhead_ms": 0.0,
+      "preserve_count": 20,
+      "reuse_count": 0,
+      "waste_count": 0,
+      "total_residency_waves": 40,
+      "net_value_history": [
+        -12.70319257871093,
+        -12.888117689040076,
+        -13.024640873788545,
+        -13.157331105783413,
+        -13.287749623651685,
+        -13.411477405734217,
+        -13.531092756358259,
+        -13.199241313122027,
+        -12.878796139307237,
+        -12.569164313477668,
+        -12.269875302291101,
+        -11.98139431961736,
+        -11.660637360799962,
+        -11.35162408962859,
+        -11.055385147175219,
+        -10.766988988326268
+      ]
+    }
+  ],
+  "class_ledger": {
+    "ephemeral": {
+      "preserved": 0.0,
+      "reused": 0.0,
+      "waste": 0.0,
+      "total_carry_units": 152.8893669497592,
+      "total_payoff_ms": 0.0,
+      "downgrades": 28.0
+    },
+    "batchable": {
+      "preserved": 2.0,
+      "reused": 0.0,
+      "waste": 0.0,
+      "total_carry_units": 12.078034063671076,
+      "total_payoff_ms": 0.0,
+      "downgrades": 0.0
+    },
+    "reusable": {
+      "preserved": 14.0,
+      "reused": 0.0,
+      "waste": 0.0,
+      "total_carry_units": 71.26755428221635,
+      "total_payoff_ms": 0.0,
+      "downgrades": 8.0
+    },
+    "warm": {
+      "preserved": 32.0,
+      "reused": 0.0,
+      "waste": 0.0,
+      "total_carry_units": 160.3649897754847,
+      "total_payoff_ms": 0.0,
+      "downgrades": 32.0
+    }
+  }
+}

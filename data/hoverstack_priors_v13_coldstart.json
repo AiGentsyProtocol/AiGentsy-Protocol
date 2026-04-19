@@ -1,0 +1,98 @@
+{
+  "version": 2,
+  "half_life_observations": 20,
+  "cache_pressure_factor": 1.0,
+  "records": [
+    {
+      "shape_id": "bom_extract",
+      "runtime_name": "reference_sim",
+      "model_name": "reference_sim",
+      "observations": 2,
+      "ewma_prefill_tokens_avoided": 0.0,
+      "ewma_queue_ms_saved": 0.0,
+      "ewma_kv_bytes": 5954.0,
+      "ewma_overhead_ms": 0.0,
+      "preserve_count": 2,
+      "reuse_count": 0,
+      "waste_count": 0,
+      "total_residency_waves": 1,
+      "net_value_history": [
+        -17.862
+      ]
+    },
+    {
+      "shape_id": "clinical_qa",
+      "runtime_name": "reference_sim",
+      "model_name": "reference_sim",
+      "observations": 3,
+      "ewma_prefill_tokens_avoided": 0.0,
+      "ewma_queue_ms_saved": 0.0,
+      "ewma_kv_bytes": 5880.9365139925985,
+      "ewma_overhead_ms": 0.0,
+      "preserve_count": 3,
+      "reuse_count": 0,
+      "waste_count": 0,
+      "total_residency_waves": 1,
+      "net_value_history": [
+        -17.643,
+        -17.642591235947098
+      ]
+    },
+    {
+      "shape_id": "contract_review",
+      "runtime_name": "reference_sim",
+      "model_name": "reference_sim",
+      "observations": 15,
+      "ewma_prefill_tokens_avoided": 0.0,
+      "ewma_queue_ms_saved": 0.0,
+      "ewma_kv_bytes": 6039.343659521395,
+      "ewma_overhead_ms": 0.0,
+      "preserve_count": 10,
+      "reuse_count": 0,
+      "waste_count": 0,
+      "total_residency_waves": 20,
+      "net_value_history": [
+        -18.116999999999997,
+        -18.117102191013227,
+        -18.11730309203861,
+        -18.11739495862433,
+        -18.117279313870437,
+        -18.117167608401406,
+        -18.117672854110076,
+        -18.117547743215766,
+        -18.118040040137156,
+        -18.118515567618147,
+        -18.11815736878163,
+        -18.117811371512467,
+        -18.11788592423337,
+        -18.117855746401688
+      ]
+    }
+  ],
+  "class_ledger": {
+    "ephemeral": {
+      "preserved": 0.0,
+      "reused": 0.0,
+      "waste": 0.0,
+      "total_carry_units": 25.156747984042973,
+      "total_payoff_ms": 0.0,
+      "downgrades": 3.0
+    },
+    "batchable": {
+      "preserved": 2.0,
+      "reused": 0.0,
+      "waste": 0.0,
+      "total_carry_units": 12.078034063671076,
+      "total_payoff_ms": 0.0,
+      "downgrades": 0.0
+    },
+    "reusable": {
+      "preserved": 13.0,
+      "reused": 0.0,
+      "waste": 0.0,
+      "total_carry_units": 68.02999295758775,
+      "total_payoff_ms": 0.0,
+      "downgrades": 8.0
+    }
+  }
+}

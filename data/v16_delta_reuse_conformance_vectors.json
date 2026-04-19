@@ -1,0 +1,24 @@
+{
+  "spec_version": "v16_delta_reuse_conformance/v1",
+
+  "near_miss_vectors": [
+    {"id": "nm_01_cold_cache", "description": "No candidates → None", "expected": "none"},
+    {"id": "nm_02_within_threshold", "description": "Diff < threshold → BaselineCandidate returned", "expected": "candidate"},
+    {"id": "nm_03_above_threshold", "description": "Diff > threshold → None", "expected": "none"},
+    {"id": "nm_04_mandate_mismatch", "description": "Different mandate_id → None (even if prompt matches)", "expected": "none"},
+    {"id": "nm_05_policy_mismatch", "description": "Different policy_version → None", "expected": "none"},
+    {"id": "nm_06_policy_invalidation_cascades", "description": "Policy invalidation removes near-miss candidates", "expected": "none"},
+    {"id": "nm_07_mandate_invalidation_cascades", "description": "Mandate invalidation removes near-miss candidates", "expected": "none"},
+    {"id": "nm_08_exact_match_skipped", "description": "Same prompt_instance_id skipped (handled by exact-hit path)", "expected": "none"},
+    {"id": "nm_09_metadata_fields", "fields_required": ["bundle_hash", "original_prompt_hash", "diff_percent", "cached_entry"]},
+    {"id": "nm_10_nonfatal", "invariant": "Near-miss failure falls through to full compute without error"}
+  ],
+
+  "delta_within_reuse_semantics": {
+    "trigger": "exact cache miss + near-miss candidate within max_diff_percent",
+    "action": "delta-compute against cached baseline instead of full recompute",
+    "output": "new proof bundle (not cached baseline) with delta_within_reuse metadata",
+    "attestation_metadata": ["delta_baseline_hash", "diff_percent", "delta_mode", "delta_within_reuse"],
+    "invalidation": "inherits from proof_cache — policy change and mandate revision invalidate near-miss candidates"
+  }
+}

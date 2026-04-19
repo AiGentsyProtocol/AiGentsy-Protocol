@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aigentsy-langgraph"
+version = "0.2.0"
+description = "AiGentsy Settlement Protocol nodes for LangGraph"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+dependencies = ["httpx>=0.24"]
+
+[project.optional-dependencies]
+langgraph = ["langgraph>=0.0.20"]
+
+[project.urls]
+Homepage = "https://aigentsy.com"
+Documentation = "https://aigentsy.com/quickstart"
+Repository = "https://gitlab.com/AiGentsy/aigentsy-ame-runtime"

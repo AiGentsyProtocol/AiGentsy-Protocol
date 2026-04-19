@@ -1,0 +1,44 @@
+{
+  "benchmark": "v1.5_wave1",
+  "scenarios": [
+    {
+      "scenario": "negative_cache",
+      "wave_1_hits": 80,
+      "wave_1_total": 200,
+      "wave_1_hit_rate": 0.4,
+      "entries_invalidated": 20,
+      "wave_2_hits": 0,
+      "wave_2_total": 100,
+      "proof_completeness_rate": 1.0,
+      "verdict": "PASS"
+    },
+    {
+      "scenario": "pre_approval",
+      "approvals_emitted": 20,
+      "approvals_signed": 20,
+      "governance_with_pa_ref": 100,
+      "mandate_invalidation_count": 1,
+      "proof_completeness_rate": 1.0,
+      "verdict": "PASS"
+    },
+    {
+      "scenario": "verifier_session",
+      "plain_ms": 15.146,
+      "session_ms": 15.59,
+      "speedup_ratio": 0.97,
+      "session_metrics": {
+        "total_bundles_verified": 100,
+        "snapshots_cached": 1,
+        "snapshots_served_from_cache": 99,
+        "signature_chain_verifications_avoided": 99,
+        "snapshot_cache_size": 1,
+        "hit_rate": 0.99
+      },
+      "plain_verified": 100,
+      "session_verified": 100,
+      "correctness_match": true,
+      "proof_completeness_rate": 1.0,
+      "verdict": "PASS"
+    }
+  ]
+}
