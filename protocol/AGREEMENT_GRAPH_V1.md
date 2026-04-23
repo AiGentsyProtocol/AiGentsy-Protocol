@@ -42,4 +42,4 @@ node exists, status, expiry, counterparty, resolved intents, mandate scope.
 
 ## 5. ProofPack Embedding
 
-`proof.evidence.agreement_graph` — all eleven primitives coexist.
+`proof.evidence.agreement_graph` — all twelve primitives coexist.
