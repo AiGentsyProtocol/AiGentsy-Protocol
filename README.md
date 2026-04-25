@@ -1,6 +1,8 @@
 # AiGentsy Protocol
 
-The settlement operating system for AI agent commerce. Specs, CUDA-validated benchmarks, conformance tests, and verifier SDK.
+Provable. Payable. Institutional. The protocol stack for proving, verifying, accepting, and settling AI agent work. Specs, CUDA-validated benchmarks, conformance tests, and verifier SDK.
+
+*Last updated: April 2026*
 
 ## What this is
 
@@ -38,6 +40,15 @@ All headline claims are backed by JSON artifacts in `data/`.
 - v1.5 Wave 2 mandate-driven routing and budget enforcement: `v15_wave2_results.json`
 - v1.5 Wave 3 delta-savings curve: `delta_savings_curve.json`
 - v1.6 delta-within-reuse (94.1% prefix alignment, PASS): `v16_delta_reuse_results.json`
+- v1.7 ProofPack Reuse (~78% wall-clock reduction on overlapping multi-agent workloads, ablation-confirmed): `V17_MULTIAGENT_FINAL_ANALYSIS.md`
+
+## What's new in v1.7
+
+ProofPack Reuse, the publicly named version of Prior-Artifact Sufficiency, is now the benchmark-proven v1.7 mechanism. Multi-agent benchmark on H100 showed 51% prompt-token reduction, 50% full-compute request reduction, and approximately 78% wall-clock runtime reduction at 100-agent scale. Ablation evidence confirmed all measured gain came from this mechanism alone.
+
+Other v1.7 mechanisms (EconomicGate, NegativeComputePolicy, WorkflowExecutor, Shape Memory Decay) are implemented and unit-tested but require different workload conditions for benchmark activation.
+
+AiGentsy uses Stripe Connect for money movement and freetsa.org for RFC 3161 timestamp anchoring. No blockchain, no fund custody, works with existing payment rails.
 
 ## Integration
 
