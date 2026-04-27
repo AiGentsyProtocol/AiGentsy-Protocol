@@ -8,10 +8,13 @@ The internal mechanism is called **Prior-Artifact Sufficiency**. It identifies i
 
 ## What the Benchmark Proved
 
-- ProofPack Reuse reduced prompt tokens by roughly **50%** and full-compute requests by roughly **50%** in the multi-agent benchmark
+- ProofPack Reuse reduced prompt tokens by roughly **50%** and full-compute requests by roughly **50%** in the multi-agent structural benchmark
 - The effect compounded with scale and remained visible through **100 agents**
+- GH200 v1.7 multi-agent mixed_composition benchmark: **77.8% wall-clock reduction** at 100-agent scale (Qwen2.5-7B)
+- A100 Negative Compute exact-reuse benchmarks: **approximately 59% wall-clock reduction** across CUDA tensor and Qwen2.5-7B LLM inference
 - Ablation confirmed: disabling ProofPack Reuse collapsed essentially **all** measured gain
 - The mechanism was the sole material driver of the observed benchmark advantage
+- These benchmark families used different harnesses, workloads, and hardware; they should be cited separately
 
 ## What This Is Not Claiming
 

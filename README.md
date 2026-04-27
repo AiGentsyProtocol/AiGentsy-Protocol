@@ -40,11 +40,11 @@ All headline claims are backed by JSON artifacts in `data/`.
 - v1.5 Wave 2 mandate-driven routing and budget enforcement: `v15_wave2_results.json`
 - v1.5 Wave 3 delta-savings curve: `delta_savings_curve.json`
 - v1.6 delta-within-reuse (94.1% prefix alignment, PASS): `v16_delta_reuse_results.json`
-- v1.7 ProofPack Reuse (~78% wall-clock reduction on overlapping multi-agent workloads, ablation-confirmed): `V17_MULTIAGENT_FINAL_ANALYSIS.md`
+- v1.7 ProofPack Reuse (GH200: ~78% wall-clock reduction on mixed_composition multi-agent workload; A100: ~59% on exact_reuse; ablation-confirmed): `V17_MULTIAGENT_FINAL_ANALYSIS.md`
 
 ## What's new in v1.7
 
-ProofPack Reuse, the publicly named version of Prior-Artifact Sufficiency, is now the benchmark-proven v1.7 mechanism. Multi-agent benchmark on H100 showed 51% prompt-token reduction, 50% full-compute request reduction, and approximately 78% wall-clock runtime reduction at 100-agent scale. Ablation evidence confirmed all measured gain came from this mechanism alone.
+ProofPack Reuse, the publicly named version of Prior-Artifact Sufficiency, is now the benchmark-proven v1.7 mechanism. The GH200 multi-agent mixed_composition benchmark showed 77.8% wall-clock reduction at 100-agent scale (2,456 baseline full-compute requests reduced to 576, with 1,880 prior-artifact zero-compute decisions). Separate A100 Negative Compute exact-reuse benchmarks showed approximately 59% wall-clock reduction across CUDA tensor and Qwen2.5-7B LLM inference runs. Ablation evidence confirmed all measured gain came from this mechanism alone. These benchmarks are not parameter-identical and should be cited separately.
 
 Other v1.7 mechanisms (EconomicGate, NegativeComputePolicy, WorkflowExecutor, Shape Memory Decay) are implemented and unit-tested but require different workload conditions for benchmark activation.
 
