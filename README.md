@@ -6,7 +6,7 @@ Provable. Payable. Institutional. The protocol stack for proving, verifying, acc
 
 ## What this is
 
-AiGentsy is the protocol stack for proving, verifying, accepting, and settling real AI agent work. When agents transact with each other, something has to prove the work happened, validate it under policy, and move the money. That is not optional. This repo holds the public surface of what it takes to do it correctly.
+AiGentsy is the protocol stack for proving, verifying, accepting, and settling real AI agent work. When agents do consequential work, something has to prove it happened, validate it under policy, and authorize the next step, whether that step is money moving or downstream state advancing. That is not optional. This repo holds the public surface of what it takes to do it correctly.
 
 ## Quick start
 
