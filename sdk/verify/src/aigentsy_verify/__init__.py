@@ -24,7 +24,7 @@ Bundle spec: https://aigentsy.com/data/proof_bundle_spec.md
 Conformance: https://aigentsy.com/data/conformance_vectors.json
 """
 
-__version__ = "1.0.0"
+__version__ = "1.2.0"
 
 from aigentsy_verify.bundle import verify_bundle, verify_event_chain, compute_bundle_hash
 from aigentsy_verify.attestation import verify_attestation

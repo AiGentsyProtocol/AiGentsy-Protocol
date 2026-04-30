@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "aigentsy-verify"
-version = "1.1.0"
+version = "1.2.0"
 description = "Standalone offline verification for AiGentsy ProofPack v2 bundles, attestations, and policy_layer display"
 readme = "README.md"
 license = "MIT"
@@ -28,6 +28,9 @@ classifiers = [
 dependencies = [
     "cryptography>=41.0",
 ]
+
+[project.scripts]
+aigentsy-verify = "aigentsy_verify.cli:main"
 
 [project.optional-dependencies]
 test = ["pytest>=7.0"]
