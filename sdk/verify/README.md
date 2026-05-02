@@ -8,7 +8,42 @@ Standalone offline verification for AiGentsy proof bundles and attestations. **Z
 pip install aigentsy-verify
 ```
 
-## Verify in 60 Seconds
+## CLI
+
+Verify a bundle offline (default — no network calls):
+
+```bash
+aigentsy-verify bundle proofpack.json
+# level: offline (4/5 steps) — STH signature skipped without key
+```
+
+Full 5/5 verification with public key fetch:
+
+```bash
+aigentsy-verify bundle proofpack.json --fetch-key
+# level: full (5/5 steps) — all steps PASS
+```
+
+JSON output for scripting:
+
+```bash
+aigentsy-verify bundle proofpack.json --json
+```
+
+Strict mode (fails if STH signature is skipped):
+
+```bash
+aigentsy-verify bundle proofpack.json --strict --fetch-key
+```
+
+Download and verify a real ProofPack:
+
+```bash
+curl -o proofpack.json https://aigentsy-ame-runtime.onrender.com/protocol/proofs/demo_deal_08effb15193a/export
+aigentsy-verify bundle proofpack.json --fetch-key
+```
+
+## Python SDK — Verify in 60 Seconds
 
 ```python
 from aigentsy_verify import verify_bundle, verify_attestation, fetch_public_key
