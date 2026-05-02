@@ -222,4 +222,9 @@ def verify_bundle(
     result["proof_count"] = len(proofs)
     result["event_count"] = len(events)
 
+    skipped = [s for s in result["steps"] if result["steps"][s].get("skipped")]
+    result["steps_run"] = len(result["steps"]) - len(skipped)
+    result["steps_skipped"] = len(skipped)
+    result["verification_level"] = "full" if not skipped else "offline"
+
     return result

@@ -5,6 +5,7 @@ Usage:
     aigentsy-verify bundle proofpack.json
     aigentsy-verify bundle proofpack.json --json
     aigentsy-verify bundle proofpack.json --strict
+    aigentsy-verify bundle proofpack.json --fetch-key
     aigentsy-verify bundle proofpack.json --public-key key.pem
 """
 
@@ -14,6 +15,8 @@ import sys
 from pathlib import Path
 
 from aigentsy_verify import __version__, verify_bundle, load_public_key_from_file
+
+_DEFAULT_KEY_URL = "https://aigentsy-ame-runtime.onrender.com/protocol/merkle/public-key"
 
 
 def _load_bundle(path: str) -> dict:
@@ -29,9 +32,20 @@ def _load_bundle(path: str) -> dict:
         sys.exit(2)
 
 
-def _status(passed: bool, skipped: bool = False) -> str:
+def _fetch_public_key() -> str:
+    try:
+        from urllib.request import urlopen
+        with urlopen(_DEFAULT_KEY_URL, timeout=10) as r:
+            data = json.loads(r.read())
+            return data.get("public_key_base64", "")
+    except Exception as e:
+        print(f"Warning: could not fetch public key: {e}", file=sys.stderr)
+        return ""
+
+
+def _status(passed: bool, skipped: bool = False, reason: str = "") -> str:
     if skipped:
-        return "SKIPPED"
+        return f"SKIPPED ({reason})" if reason else "SKIPPED"
     return "PASS" if passed else "FAIL"
 
 
@@ -45,6 +59,8 @@ def cmd_bundle(args):
         except Exception as e:
             print(f"Error: cannot load public key: {e}", file=sys.stderr)
             sys.exit(2)
+    elif args.fetch_key:
+        public_key_b64 = _fetch_public_key()
 
     result = verify_bundle(bundle, public_key_base64=public_key_b64)
 
@@ -55,6 +71,7 @@ def cmd_bundle(args):
 
     steps = result.get("steps", {})
     trace = bundle.get("agent_trace", [])
+    level = result.get("verification_level", "unknown")
 
     print()
     print("AiGentsy ProofPack verification")
@@ -73,9 +90,9 @@ def cmd_bundle(args):
 
     print(f"  bundle_hash:      {_status(bh.get('passed', False))}")
     print(f"  event_chain:      {_status(ec.get('passed', False))}  ({ec.get('event_count', 0)} events)")
-    print(f"  merkle_inclusion: {_status(mi.get('passed', False), mi.get('skipped', False))}  ({mi.get('type', 'none')})")
-    print(f"  sth_signature:    {_status(ss.get('passed', False), ss.get('skipped', False))}")
-    print(f"  cross_reference:  {_status(cr.get('passed', False), cr.get('skipped', False))}")
+    print(f"  merkle_inclusion: {_status(mi.get('passed', False), mi.get('skipped', False), 'no inclusion data')}")
+    print(f"  sth_signature:    {_status(ss.get('passed', False), ss.get('skipped', False), 'no public key — use --fetch-key or --public-key')}")
+    print(f"  cross_reference:  {_status(cr.get('passed', False), cr.get('skipped', False), 'no STH or inclusion')}")
 
     if trace:
         print(f"\n  agent_trace:      {len(trace)} roles")
@@ -87,9 +104,13 @@ def cmd_bundle(args):
 
     if args.strict and ss.get("skipped"):
         verified = False
-        print("  FAIL (--strict: signed tree head verification was skipped)")
+        print(f"  verified:         false")
+        print(f"  reason:           --strict requires STH signature (use --fetch-key or --public-key)")
     else:
         print(f"  verified:         {str(verified).lower()}")
+        steps_run = result.get("steps_run", "?")
+        steps_total = steps_run + result.get("steps_skipped", 0)
+        print(f"  level:            {level} ({steps_run}/{steps_total} steps)")
 
     print()
     sys.exit(0 if verified else 1)
@@ -112,6 +133,7 @@ def main():
     bundle_p.add_argument("file", help="Path to ProofPack bundle JSON")
     bundle_p.add_argument("--json", action="store_true", help="Output machine-readable JSON")
     bundle_p.add_argument("--strict", action="store_true", help="Fail if STH signature verification is skipped")
+    bundle_p.add_argument("--fetch-key", action="store_true", help="Fetch Ed25519 public key from AiGentsy runtime for STH verification")
     bundle_p.add_argument("--public-key", help="Path to Ed25519 public key PEM file")
 
     args = parser.parse_args()
