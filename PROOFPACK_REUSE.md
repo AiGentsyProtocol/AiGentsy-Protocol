@@ -56,3 +56,21 @@ ProofPack Reuse produces **no benefit** when:
 
 > "Quality is fully verified."
 > (Quality remained unchanged versus baseline in this benchmark, but the benchmark's absolute task-quality level was only moderate.)
+
+## Where This Goes Next: Governed Compute Sufficiency Spectrum
+
+ProofPack Reuse is the first benchmark-proven layer in HoverStack's governed compute architecture.
+
+The core principle is Governed Evidence Sufficiency: HoverStack must only avoid, reuse, reduce, defer, or partially recompute fresh work when there exists sufficient, verifiable, governed evidence that the requested computation — or a bounded equivalent — has already been performed under policy, and that evidence remains valid.
+
+Today, that evidence exists at the instance level through exact prior ProofPack reuse.
+
+The next layer is Shape-Aware Reuse: governed reuse and refusal across equivalent compute shapes using shape signatures, confidence tiers, policy bounds, and stable-vs-unstable region handling.
+
+The future layer is Workflow Sufficiency: workflow or branch-level sufficiency decisions where stable regions can be reused, unstable regions are recomputed, and whole branches can be refused only when explicit thresholds are met.
+
+A longer-term north-star is Economy Sufficiency: cross-agent and cross-organization governed memory. It is not a current benchmark claim.
+
+The system also compounds over time through governed outcome memory. Accepted outputs, rejected outputs, fallback events, quality-parity results, disputes, and drift signals can update the reuse ledger and future sufficiency boundaries. This is not automatic truth discovery; it is governed memory under policy.
+
+Only ProofPack Reuse is benchmark-proven today. Shape-Aware Reuse, Workflow Sufficiency, Economy Sufficiency, and the broader compounding governance loop are architecture direction unless separately benchmarked.
