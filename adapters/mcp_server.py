@@ -44,7 +44,7 @@ AME_API_KEY = os.getenv("AME_API_KEY", "")
 
 mcp = FastMCP(
     "aigentsy-settlement",
-    description="AiGentsy Settlement Protocol — proof bundle verification, "
+    instructions="AiGentsy Settlement Protocol — proof bundle verification, "
                 "exactly-once settlement, portable verification bundles, "
                 "and RFC 6962 Merkle transparency log for AI agent work.",
 )
@@ -53,6 +53,15 @@ mcp = FastMCP(
 def _client(api_key: str = "") -> AiGentsyClient:
     key = api_key or AME_API_KEY
     return AiGentsyClient(AME_BASE, api_key=key)
+
+
+def _require(name: str, value):
+    """Raise ValueError if a required arg is empty, None, or whitespace-only."""
+    if value is None:
+        raise ValueError(f"{name} is required")
+    if isinstance(value, str) and not value.strip():
+        raise ValueError(f"{name} is required (got empty string)")
+    return value
 
 
 # ── Tools ──
@@ -72,6 +81,7 @@ def aigentsy_register(
         agent_name: Display name for the agent (e.g. "design_agent_v2")
         capabilities: Comma-separated list of capabilities (e.g. "marketing,design,code")
     """
+    _require("agent_name", agent_name)
     client = _client()
     result = client.register(agent_name, capabilities=capabilities.split(","))
     return json.dumps({
@@ -106,6 +116,9 @@ def aigentsy_proof_pack(
         proof_type: Type of proof (creative_preview, test_results, code_diff, etc.)
         proof_url: URL to proof artifact (optional)
     """
+    _require("agent_username", agent_username)
+    _require("scope_summary", scope_summary)
+    _require("api_key", api_key)
     client = _client(api_key)
     proof_data = {"asset_type": "deliverable"}
     if proof_url:
@@ -148,6 +161,10 @@ def aigentsy_settle(
         api_key: Your API key
         proof_hash: Proof hash from proof-pack (for verification)
     """
+    _require("deal_id", deal_id)
+    _require("actor_id", actor_id)
+    _require("counterparty_id", counterparty_id)
+    _require("api_key", api_key)
     client = _client(api_key)
     result = client.settle(
         deal_id, amount, actor_id, counterparty_id,
@@ -175,6 +192,7 @@ def aigentsy_verify(deal_id: str) -> str:
     Args:
         deal_id: The deal_id to verify
     """
+    _require("deal_id", deal_id)
     client = _client()
     result = client.verify_proof_bundle(deal_id)
     return json.dumps({
@@ -203,6 +221,7 @@ def aigentsy_export(deal_id: str) -> str:
     Args:
         deal_id: The deal_id to export
     """
+    _require("deal_id", deal_id)
     client = _client()
     result = client.get_proof_bundle(deal_id)
     return json.dumps(result, default=str)
@@ -221,6 +240,7 @@ def aigentsy_proof_chain(deal_id: str) -> str:
     Args:
         deal_id: The deal_id to query provenance for
     """
+    _require("deal_id", deal_id)
     client = _client()
     result = client.get_proof_chain(deal_id)
     return json.dumps(result, default=str)
@@ -244,6 +264,9 @@ def aigentsy_settle_multi(
         splits_json: JSON array of splits: [{"agent_id":"...", "role":"...", "share":0.5}, ...]
         api_key: Your API key
     """
+    _require("deal_id", deal_id)
+    _require("splits_json", splits_json)
+    _require("api_key", api_key)
     client = _client(api_key)
     splits = json.loads(splits_json)
     result = client.settle_multi(deal_id, total_amount, splits)
@@ -262,6 +285,8 @@ def aigentsy_attestation(agent_id: str, api_key: str) -> str:
         agent_id: Agent to issue attestation for
         api_key: Your API key
     """
+    _require("agent_id", agent_id)
+    _require("api_key", api_key)
     client = _client(api_key)
     result = client.issue_attestation(agent_id)
     return json.dumps(result, default=str)
@@ -297,6 +322,9 @@ def aigentsy_create_webhook(
         api_key: Your API key
         secret: Optional shared secret for HMAC signature verification
     """
+    _require("url", url)
+    _require("events", events)
+    _require("api_key", api_key)
     client = _client(api_key)
     event_list = ["*"] if events == "*" else [e.strip() for e in events.split(",")]
     result = client.create_webhook(url, events=event_list, secret=secret or None)
