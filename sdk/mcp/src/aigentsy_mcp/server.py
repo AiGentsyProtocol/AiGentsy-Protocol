@@ -331,6 +331,88 @@ def aigentsy_create_webhook(
     return json.dumps(result, default=str)
 
 
+# ── v1.1 Acceptance Gate Tools ──
+
+
+@mcp.tool()
+def aigentsy_acceptance_submit(
+    deal_id: str,
+    api_key: str,
+    downstream_action: str = "settle",
+    review_deadline_seconds: int = 0,
+) -> str:
+    """Submit verified output for acceptance review before downstream action.
+
+    Gates settlement, release, or completion behind explicit accept/reject.
+    Requires a ProofPack to exist for the deal first.
+
+    Args:
+        deal_id: The deal_id with a verified proof
+        api_key: Your API key
+        downstream_action: Action on accept: settle, release, complete, publish
+        review_deadline_seconds: Optional deadline in seconds (0 = no deadline)
+    """
+    _require("deal_id", deal_id)
+    _require("api_key", api_key)
+    client = _client(api_key)
+    result = client.acceptance_submit(
+        deal_id, downstream_action=downstream_action,
+        review_deadline_seconds=review_deadline_seconds,
+    )
+    return json.dumps(result, default=str)
+
+
+@mcp.tool()
+def aigentsy_acceptance_decide(
+    acceptance_id: str,
+    decision: str,
+    api_key: str,
+    reason: str = "",
+    checks_passed: str = "",
+    checks_failed: str = "",
+) -> str:
+    """Record accept or reject decision on a pending acceptance gate.
+
+    Accepted outputs trigger the configured downstream action (settle, release, etc.).
+    Rejected outputs trigger hold or escalation.
+
+    Args:
+        acceptance_id: The acceptance_id from submit
+        decision: 'accept' or 'reject'
+        api_key: Your API key
+        reason: Reason for decision
+        checks_passed: Comma-separated checks that passed (optional)
+        checks_failed: Comma-separated checks that failed (optional)
+    """
+    _require("acceptance_id", acceptance_id)
+    _require("decision", decision)
+    _require("api_key", api_key)
+    client = _client(api_key)
+    passed = [c.strip() for c in checks_passed.split(",") if c.strip()] if checks_passed else []
+    failed = [c.strip() for c in checks_failed.split(",") if c.strip()] if checks_failed else []
+    result = client.acceptance_decide(
+        acceptance_id, decision, reason=reason,
+        checks_passed=passed, checks_failed=failed,
+    )
+    return json.dumps(result, default=str)
+
+
+@mcp.tool()
+def aigentsy_acceptance_status(deal_id: str) -> str:
+    """Get acceptance gate status for a deal.
+
+    Returns the acceptance record if one exists, or null if no gate
+    has been created. Public endpoint — no API key required.
+
+    Args:
+        deal_id: The deal_id to check
+    """
+    _require("deal_id", deal_id)
+    client = _client()
+    result = client.acceptance_status(deal_id)
+    return json.dumps(result, default=str)
+
+
 # ── Resources ──
 
 

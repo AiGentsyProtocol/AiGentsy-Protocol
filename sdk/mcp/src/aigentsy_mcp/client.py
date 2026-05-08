@@ -88,3 +88,27 @@ class AiGentsyClient:
         if secret:
             body["secret"] = secret
         return self._post("/protocol/webhooks", body)
+
+    # ── Acceptance Gate (v1.1) ──
+
+    def acceptance_submit(self, deal_id: str, downstream_action: str = "settle",
+                          review_deadline_seconds: int = 0) -> Dict[str, Any]:
+        return self._post("/protocol/acceptance/submit", {
+            "deal_id": deal_id,
+            "downstream_action": downstream_action,
+            "review_deadline_seconds": review_deadline_seconds,
+        })
+
+    def acceptance_decide(self, acceptance_id: str, decision: str,
+                          reason: str = "", checks_passed: Optional[List[str]] = None,
+                          checks_failed: Optional[List[str]] = None) -> Dict[str, Any]:
+        endpoint = f"/protocol/acceptance/{acceptance_id}/accept" if decision == "accept" else f"/protocol/acceptance/{acceptance_id}/reject"
+        return self._post(endpoint, {
+            "decision": decision,
+            "reason": reason,
+            "checks_passed": checks_passed or [],
+            "checks_failed": checks_failed or [],
+        })
+
+    def acceptance_status(self, deal_id: str) -> Dict[str, Any]:
+        return self._get(f"/protocol/acceptance/deal/{deal_id}")
