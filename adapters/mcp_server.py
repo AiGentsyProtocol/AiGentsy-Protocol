@@ -44,7 +44,7 @@ AME_API_KEY = os.getenv("AME_API_KEY", "")
 
 mcp = FastMCP(
     "aigentsy-settlement",
-    description="AiGentsy Settlement Protocol — proof bundle verification, "
+    instructions="AiGentsy Settlement Protocol — proof bundle verification, "
                 "exactly-once settlement, portable verification bundles, "
                 "and RFC 6962 Merkle transparency log for AI agent work.",
 )
