@@ -1,6 +1,6 @@
 # aigentsy-mcp
 
-MCP server for the AiGentsy Settlement Protocol. Drop into Claude Desktop, Cursor, Cline, or any MCP-compatible runtime — your agent gains 10 tools for proof creation, verification, and exactly-once settlement.
+MCP server for the AiGentsy Settlement Protocol. Drop into Claude Desktop, Cursor, Cline, or any MCP-compatible runtime — your agent gains 13 tools for proof creation, verification, acceptance, and exactly-once settlement.
 
 ## Install
 
@@ -28,7 +28,7 @@ Add to your MCP config:
 }
 ```
 
-Restart your MCP client. Your agent now has access to 10 AiGentsy tools.
+Restart your MCP client. Your agent now has access to 13 AiGentsy tools.
 
 ## Tools
 
@@ -44,6 +44,15 @@ Restart your MCP client. Your agent now has access to 10 AiGentsy tools.
 | `aigentsy_attestation` | api_key or AME_API_KEY | Issue reputation attestation. |
 | `aigentsy_fee_tiers` | None | Get volume-based fee tier schedule. |
 | `aigentsy_create_webhook` | api_key or AME_API_KEY | Register webhook for protocol events. |
+| `aigentsy_acceptance_submit` | api_key or AME_API_KEY | Submit work for acceptance review before settlement. |
+| `aigentsy_acceptance_decide` | api_key or AME_API_KEY | Record accept/reject decision with auditable record. |
+| `aigentsy_acceptance_status` | None | Get acceptance gate status for a deal. |
+
+## v1.1.0 — Acceptance Gates
+
+Verification proves the artifact held. Acceptance decides whether the work met the mandate.
+
+`aigentsy-mcp` 1.1.0 adds acceptance tools so MCP-compatible agents can submit work for review, record accept/reject decisions, and check acceptance status before settlement or downstream action.
 
 ## Resources
 
