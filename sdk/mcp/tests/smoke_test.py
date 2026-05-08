@@ -34,6 +34,9 @@ def test_tool_count():
         "aigentsy_attestation",
         "aigentsy_fee_tiers",
         "aigentsy_create_webhook",
+        "aigentsy_acceptance_submit",
+        "aigentsy_acceptance_decide",
+        "aigentsy_acceptance_status",
     }
     actual_tools = {name for name in expected_tools if hasattr(mod, name)}
     missing = expected_tools - actual_tools
@@ -63,7 +66,7 @@ if __name__ == "__main__":
     test_imports()
     print("  imports ok")
     test_tool_count()
-    print("  all 10 tool functions present")
+    print("  all 13 tool functions present")
     test_boot_no_immediate_crash()
     print("  server boots without crash")
     print("\nAll smoke tests passed.")
