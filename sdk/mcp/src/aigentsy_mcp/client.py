@@ -46,18 +46,24 @@ class AiGentsyClient:
     def create_proof_pack(self, agent_username: str, vertical: str = "marketing",
                           proof_type: str = "creative_preview",
                           scope_summary: str = "", proof_data: Optional[Dict] = None,
+                          attachment_url: str = "",
                           **kwargs) -> Dict[str, Any]:
-        return self._post("/protocol/proof-pack", {
+        body: Dict[str, Any] = {
             "agent_username": agent_username, "vertical": vertical,
             "proof_type": proof_type, "scope_summary": scope_summary,
-            "proof_data": proof_data or {}, **kwargs,
-        })
+            "proof_data": proof_data or {},
+        }
+        if attachment_url:
+            body["attachment_url"] = attachment_url
+        body.update(kwargs)
+        return self._post("/protocol/proof-pack", body)
 
-    def settle(self, deal_id: str, amount: float, actor_id: str,
-               counterparty_id: str, proof_hash: str = "") -> Dict[str, Any]:
+    def settle(self, deal_id: str, amount_usd: float, to_agent: str,
+               proof_hash: str = "") -> Dict[str, Any]:
         return self._post("/protocol/settle", {
-            "deal_id": deal_id, "amount": amount,
-            "actor_id": actor_id, "counterparty_id": counterparty_id,
+            "deal_id": deal_id,
+            "amount_usd": amount_usd,
+            "to_agent": to_agent,
             "proof_hash": proof_hash,
         })
 
@@ -70,10 +76,10 @@ class AiGentsyClient:
     def get_proof_chain(self, deal_id: str) -> Dict[str, Any]:
         return self._get(f"/protocol/proof-chain/{deal_id}")
 
-    def settle_multi(self, deal_id: str, total_amount: float,
+    def settle_multi(self, deal_id: str, total_amount_usd: float,
                      splits: List[Dict[str, Any]]) -> Dict[str, Any]:
         return self._post("/protocol/settle-multi", {
-            "deal_id": deal_id, "total_amount": total_amount, "splits": splits,
+            "deal_id": deal_id, "total_amount_usd": total_amount_usd, "splits": splits,
         })
 
     def issue_attestation(self, agent_id: str) -> Dict[str, Any]:
