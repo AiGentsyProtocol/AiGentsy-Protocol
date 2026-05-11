@@ -293,7 +293,7 @@ def aigentsy_attestation(agent_id: str, api_key: str) -> str:
 
 
 @mcp.tool()
-def aigentsy_fee_tiers() -> str:
+def aigentsy_fee_tiers(placeholder: str = "") -> str:
     """Get the volume-based fee tier schedule.
 
     Shows the 4 fee tiers (Starter, Growth, Scale, Enterprise)
