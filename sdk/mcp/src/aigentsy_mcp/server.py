@@ -178,11 +178,14 @@ def aigentsy_settle(
     return json.dumps({
         "ok": result.get("ok"),
         "deal_id": deal_id,
-        "gross": result.get("gross"),
-        "net": result.get("net"),
+        "tx_id": result.get("tx_id"),
+        "gross_amount": result.get("gross_amount"),
+        "net_to_recipient": result.get("net_to_recipient"),
         "protocol_fee": result.get("protocol_fee"),
-        "platform_fee": result.get("platform_fee"),
-        "events_emitted": result.get("events_emitted"),
+        "from_agent": result.get("from_agent"),
+        "to_agent": result.get("to_agent"),
+        "provider": result.get("provider"),
+        "settled_at": result.get("settled_at"),
     })
 
 

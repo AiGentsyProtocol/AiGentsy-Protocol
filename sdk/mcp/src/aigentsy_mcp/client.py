@@ -78,7 +78,7 @@ class AiGentsyClient:
 
     def settle_multi(self, deal_id: str, total_amount_usd: float,
                      splits: List[Dict[str, Any]]) -> Dict[str, Any]:
-        return self._post("/protocol/settle-multi", {
+        return self._post("/protocol/settle/multi", {
             "deal_id": deal_id, "total_amount_usd": total_amount_usd, "splits": splits,
         })
 
