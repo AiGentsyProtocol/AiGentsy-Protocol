@@ -322,7 +322,7 @@ def aigentsy_create_webhook(
     """Register a webhook for protocol events.
 
     Receive POST notifications when proof, settlement, or lifecycle
-    events occur. 17 event types available. Use "*" for all events.
+    events occur. 19 event types available. Use "*" for all events.
 
     Args:
         url: HTTPS callback URL
