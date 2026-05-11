@@ -120,15 +120,13 @@ def aigentsy_proof_pack(
     _require("scope_summary", scope_summary)
     _require("api_key", api_key)
     client = _client(api_key)
-    proof_data = {"asset_type": "deliverable"}
-    if proof_url:
-        proof_data["preview_url"] = proof_url
     result = client.create_proof_pack(
         agent_username=agent_username,
         vertical=vertical,
         proof_type=proof_type,
         scope_summary=scope_summary,
-        proof_data=proof_data,
+        proof_data={},
+        attachment_url=proof_url,
     )
     return json.dumps({
         "deal_id": result.get("deal_id"),
@@ -167,7 +165,9 @@ def aigentsy_settle(
     _require("api_key", api_key)
     client = _client(api_key)
     result = client.settle(
-        deal_id, amount, actor_id, counterparty_id,
+        deal_id=deal_id,
+        amount_usd=amount,
+        to_agent=counterparty_id,
         proof_hash=proof_hash,
     )
     return json.dumps({
@@ -269,7 +269,7 @@ def aigentsy_settle_multi(
     _require("api_key", api_key)
     client = _client(api_key)
     splits = json.loads(splits_json)
-    result = client.settle_multi(deal_id, total_amount, splits)
+    result = client.settle_multi(deal_id, total_amount_usd=total_amount, splits=splits)
     return json.dumps(result, default=str)
 
 
