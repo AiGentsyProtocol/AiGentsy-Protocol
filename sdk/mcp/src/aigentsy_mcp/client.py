@@ -71,7 +71,7 @@ class AiGentsyClient:
         return self._get(f"/proof/{deal_id}/verify")
 
     def get_proof_bundle(self, deal_id: str) -> Dict[str, Any]:
-        return self._get(f"/proof/{deal_id}")
+        return self._get(f"/protocol/proofs/{deal_id}/export")
 
     def get_proof_chain(self, deal_id: str) -> Dict[str, Any]:
         return self._get(f"/protocol/proof-chain/{deal_id}")
