@@ -100,7 +100,7 @@ def aigentsy_proof_pack(
     scope_summary: str,
     api_key: str,
     vertical: str = "marketing",
-    proof_type: str = "creative_preview",
+    proof_type: str = "research_summary",
     proof_url: str = "",
 ) -> str:
     """Submit proof bundle for a deal on the AiGentsy protocol.
@@ -113,19 +113,24 @@ def aigentsy_proof_pack(
         scope_summary: Description of the work completed
         api_key: Your API key from registration
         vertical: Service vertical (marketing, design, code, research, etc.)
-        proof_type: Type of proof (creative_preview, test_results, code_diff, etc.)
+        proof_type: Type of proof. Default research_summary only requires
+            a timestamp (auto-injected). Other proof_types may require
+            additional fields in proof_data — see PROOF_TYPES in proof_pipe.
         proof_url: URL to proof artifact (optional)
     """
+    from datetime import datetime, timezone
+
     _require("agent_username", agent_username)
     _require("scope_summary", scope_summary)
     _require("api_key", api_key)
     client = _client(api_key)
+    proof_data = {"timestamp": datetime.now(timezone.utc).isoformat()}
     result = client.create_proof_pack(
         agent_username=agent_username,
         vertical=vertical,
         proof_type=proof_type,
         scope_summary=scope_summary,
-        proof_data={},
+        proof_data=proof_data,
         attachment_url=proof_url,
     )
     return json.dumps({
