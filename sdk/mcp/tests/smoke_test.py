@@ -3,13 +3,15 @@
 Confirms:
 * Package imports cleanly
 * Server module has main() entry point
-* All 10 tool functions exist
+* All 13 tool functions exist
+* FastMCP accepts every tool signature (no InvalidSignature, no leading-_ params)
 * Server boots via python -m aigentsy_mcp without immediate crash
 
 Does NOT test live runtime calls.
 Live MCP Inspector registration is a manual post-merge check.
 """
 
+import asyncio
 import importlib
 import subprocess
 import sys
@@ -43,6 +45,25 @@ def test_tool_count():
     assert not missing, f"Missing tools: {missing}"
 
 
+def test_fastmcp_signatures_valid():
+    """All tool wrappers must register with FastMCP without InvalidSignature.
+
+    Guards against parameter names beginning with '_' (FastMCP rejects them)
+    and any other signature constraint that would prevent stdio tool dispatch.
+    """
+    mod = importlib.import_module("aigentsy_mcp.server")
+    tool_names = asyncio.run(_collect_tool_names(mod.mcp))
+    assert len(tool_names) == 13, (
+        f"FastMCP registered {len(tool_names)} tools, expected 13. "
+        f"Got: {sorted(tool_names)}"
+    )
+
+
+async def _collect_tool_names(mcp_instance):
+    tools = await mcp_instance.list_tools()
+    return [t.name for t in tools]
+
+
 def test_boot_no_immediate_crash():
     proc = subprocess.Popen(
         [sys.executable, "-m", "aigentsy_mcp"],
@@ -67,6 +88,8 @@ if __name__ == "__main__":
     print("  imports ok")
     test_tool_count()
     print("  all 13 tool functions present")
+    test_fastmcp_signatures_valid()
+    print("  all 13 tool wrappers register with FastMCP (no InvalidSignature)")
     test_boot_no_immediate_crash()
     print("  server boots without crash")
     print("\nAll smoke tests passed.")

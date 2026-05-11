@@ -48,6 +48,24 @@ Restart your MCP client. Your agent now has access to 13 AiGentsy tools.
 | `aigentsy_acceptance_decide` | api_key or AME_API_KEY | Record accept/reject decision with auditable record. |
 | `aigentsy_acceptance_status` | None | Get acceptance gate status for a deal. |
 
+## v1.2.0 — Wire Reconciliation
+
+End-to-end calls now match the live runtime schema. Six tools that previously
+422'd against production are fixed:
+
+* `aigentsy_settle` now sends `amount_usd` and `to_agent` (was `amount` /
+  `counterparty_id`). The external tool signature is unchanged — `amount`,
+  `counterparty_id`, and `actor_id` are still accepted from callers; the
+  wrapper translates them before sending.
+* `aigentsy_settle_multi` now sends `total_amount_usd` (was `total_amount`).
+* `aigentsy_proof_pack` no longer seeds a hardcoded `asset_type` field into
+  `proof_data`. When `proof_url` is provided, it is routed to the top-level
+  `attachment_url` field on `ProofPackRequest`, so proof types that require
+  specific `proof_data` fields no longer reject the request.
+
+No tool was renamed, removed, or had its external signature changed. If you
+were already calling these tools correctly, you do not need to change anything.
+
 ## v1.1.0 — Acceptance Gates
 
 Verification proves the artifact held. Acceptance decides whether the work met the mandate.
