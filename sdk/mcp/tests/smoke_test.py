@@ -6,13 +6,17 @@ Confirms:
 * All 13 tool functions exist
 * FastMCP accepts every tool signature (no InvalidSignature, no leading-_ params)
 * Server boots via python -m aigentsy_mcp without immediate crash
+* aigentsy_export returns a bundle that aigentsy-verify accepts (the F1 gate)
 
-Does NOT test live runtime calls.
-Live MCP Inspector registration is a manual post-merge check.
+The export-verifiability test makes a live call to AME_BASE (defaults to
+production). Set AIGENTSY_SKIP_LIVE=1 to skip it locally; the release pipeline
+must run it green before publishing.
 """
 
 import asyncio
 import importlib
+import json
+import os
 import subprocess
 import sys
 
@@ -64,6 +68,64 @@ async def _collect_tool_names(mcp_instance):
     return [t.name for t in tools]
 
 
+def test_export_bundle_is_verifiable():
+    """aigentsy_export must return a bundle that aigentsy-verify accepts.
+
+    Gate against the F1 regression class (export hits a non-spec endpoint
+    and returns a bundle that fails offline verification). Run live against
+    AME_BASE (defaults to production); skipped if AIGENTSY_SKIP_LIVE=1 is set.
+
+    Requires aigentsy-verify to be installed in the same environment.
+    """
+    if os.environ.get("AIGENTSY_SKIP_LIVE") == "1":
+        print("  [skip] AIGENTSY_SKIP_LIVE=1")
+        return
+
+    try:
+        from aigentsy_verify import verify_bundle, fetch_public_key
+    except ImportError:
+        raise AssertionError(
+            "aigentsy-verify is required for the export-verifiability gate. "
+            "Install with: pip install aigentsy-verify"
+        )
+
+    server = importlib.import_module("aigentsy_mcp.server")
+
+    # Disposable agent + proof via the public wrappers (no signup-time secrets)
+    reg = json.loads(server.aigentsy_register(
+        agent_name="mcp_export_gate_smoke",
+        capabilities="research",
+    ))
+    api_key = reg["api_key"]
+    agent_id = reg["agent_id"]
+
+    pp = json.loads(server.aigentsy_proof_pack(
+        agent_username=agent_id,
+        scope_summary="export-verifiability smoke",
+        api_key=api_key,
+    ))
+    deal_id = pp.get("deal_id")
+    assert deal_id, f"proof_pack returned no deal_id: {pp}"
+
+    bundle = json.loads(server.aigentsy_export(deal_id=deal_id))
+
+    public_key = fetch_public_key()
+    result = verify_bundle(bundle, public_key_base64=public_key)
+
+    assert result.get("verified") is True, (
+        f"aigentsy-verify rejected the exported bundle. result={result}"
+    )
+    steps = result.get("steps", {})
+    failed = [name for name, step in steps.items() if not step.get("passed")]
+    assert not failed, (
+        f"aigentsy-verify reported failed/skipped checks: {failed}. "
+        f"full steps={steps}"
+    )
+    assert result.get("steps_run", 0) == 5, (
+        f"expected 5 verification steps to run; got {result.get('steps_run')}"
+    )
+
+
 def test_boot_no_immediate_crash():
     proc = subprocess.Popen(
         [sys.executable, "-m", "aigentsy_mcp"],
@@ -90,6 +152,8 @@ if __name__ == "__main__":
     print("  all 13 tool functions present")
     test_fastmcp_signatures_valid()
     print("  all 13 tool wrappers register with FastMCP (no InvalidSignature)")
+    test_export_bundle_is_verifiable()
+    print("  exported bundle verified end-to-end (5/5 checks)")
     test_boot_no_immediate_crash()
     print("  server boots without crash")
     print("\nAll smoke tests passed.")
