@@ -48,6 +48,21 @@ Restart your MCP client. Your agent now has access to 13 AiGentsy tools.
 | `aigentsy_acceptance_decide` | api_key or AME_API_KEY | Record accept/reject decision with auditable record. |
 | `aigentsy_acceptance_status` | None | Get acceptance gate status for a deal. |
 
+## v1.2.1 — Offline-Verifiable Export
+
+`aigentsy_export` now returns a spec-v2.0.0-compliant ProofPack bundle that
+passes `aigentsy-verify.verify_bundle()` against all five checks (bundle hash,
+event chain integrity, RFC 6962 Merkle inclusion, Ed25519 signed tree head,
+cross-reference). Previously the tool hit `/proof/{deal_id}`, which omitted
+`bundle_hash`, `spec_version`, `merkle_inclusion`, and `signed_tree_head` —
+making the returned object non-verifiable offline.
+
+The wrapper now hits `/protocol/proofs/{deal_id}/export` and emits the
+spec-v2.0.0 bundle directly. No external tool signature change.
+
+Also fixes a docstring drift in `aigentsy_create_webhook`: the docstring said
+"17 event types"; the runtime returns 19 (and the integrations page documents 19).
+
 ## v1.2.0 — Wire Reconciliation
 
 End-to-end calls now match the live runtime schema. Six tools that previously

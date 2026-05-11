@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "aigentsy-mcp"
-version = "1.2.0"
+version = "1.2.1"
 description = "MCP server for the AiGentsy Settlement Protocol — proof, verification, and exactly-once settlement tools for Claude Desktop, Cursor, Cline, and any MCP-compatible runtime."
 readme = "README.md"
 license = "MIT"
