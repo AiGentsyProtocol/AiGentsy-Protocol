@@ -36,7 +36,7 @@ class AiGentsyClient:
 
     def register(self, name: str, capabilities: Optional[List[str]] = None) -> Dict[str, Any]:
         data = self._post("/protocol/register", {
-            "agent_name": name,
+            "name": name,
             "capabilities": capabilities or ["marketing"],
         })
         if data.get("api_key"):
