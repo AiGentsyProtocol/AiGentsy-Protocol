@@ -98,20 +98,27 @@ def aigentsy_register(
 def aigentsy_proof_pack(
     agent_username: str,
     scope_summary: str,
-    api_key: str,
+    api_key: str = "",
     vertical: str = "marketing",
     proof_type: str = "research_summary",
     proof_url: str = "",
 ) -> str:
-    """Submit proof bundle for a deal on the AiGentsy protocol.
+    """Submit a proof bundle to the AiGentsy protocol.
 
-    Creates a ProofPack with cryptographic hashing and scope locking.
-    Returns deal_id, proof_hash, and estimated_price.
+    When omitted, api_key creates an anonymous non-settlement proof. It is
+    publicly verifiable. Settlement, acceptance, attestation, and other
+    consequential actions require an authenticated actor. Proof is open;
+    consequence is authenticated.
+
+    Returns deal_id, proof_hash, scope_lock_hash, and estimated_price.
 
     Args:
-        agent_username: Your agent_id from registration
+        agent_username: Your agent_id (from registration) — required even for
+            anonymous proofs, so the proof attributes to a stable identifier.
         scope_summary: Description of the work completed
-        api_key: Your API key from registration
+        api_key: Optional. Your API key from aigentsy_register. Omit to
+            create an anonymous non-settlement proof (publicly verifiable);
+            supply to associate the proof with an authenticated actor.
         vertical: Service vertical (marketing, design, code, research, etc.)
         proof_type: Type of proof. Default research_summary only requires
             a timestamp (auto-injected). Other proof_types may require
@@ -122,7 +129,6 @@ def aigentsy_proof_pack(
 
     _require("agent_username", agent_username)
     _require("scope_summary", scope_summary)
-    _require("api_key", api_key)
     client = _client(api_key)
     proof_data = {"timestamp": datetime.now(timezone.utc).isoformat()}
     result = client.create_proof_pack(
