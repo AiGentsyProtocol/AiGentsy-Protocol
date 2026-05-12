@@ -6,11 +6,13 @@ Confirms:
 * All 13 tool functions exist
 * FastMCP accepts every tool signature (no InvalidSignature, no leading-_ params)
 * Server boots via python -m aigentsy_mcp without immediate crash
-* aigentsy_export returns a bundle that aigentsy-verify accepts (the F1 gate)
 
-The export-verifiability test makes a live call to AME_BASE (defaults to
-production). Set AIGENTSY_SKIP_LIVE=1 to skip it locally; the release pipeline
-must run it green before publishing.
+Plus two live contract gates against AME_BASE (defaults to production):
+* aigentsy_export returns a bundle that aigentsy-verify accepts (F1 gate)
+* Anonymous proof_pack remains publicly verifiable (anonymous-proof gate)
+
+Set AIGENTSY_SKIP_LIVE=1 to skip the live gates locally; the release pipeline
+must run them green before publishing.
 """
 
 import asyncio
@@ -126,6 +128,74 @@ def test_export_bundle_is_verifiable():
     )
 
 
+def test_anonymous_proof_is_verifiable():
+    """Anonymous proof_pack (no api_key) must remain publicly verifiable.
+
+    Protocol invariant: proof is open, consequence is authenticated. The
+    runtime accepts /protocol/proof-pack with no X-API-Key. If the MCP wrapper
+    re-introduces a client-side api_key requirement, anonymous proofs become
+    unreachable through the documented Claude Desktop / Cursor / Cline path —
+    a contract regression rather than a wire bug.
+
+    This gate creates an anonymous proof through the wrapper, verifies it via
+    the public verify path (chain_integrity), and verifies the exported bundle
+    offline via aigentsy-verify (verified). Both must hold.
+
+    Requires aigentsy-verify to be installed in the same environment.
+    """
+    if os.environ.get("AIGENTSY_SKIP_LIVE") == "1":
+        print("  [skip] AIGENTSY_SKIP_LIVE=1")
+        return
+
+    try:
+        from aigentsy_verify import verify_bundle, fetch_public_key
+    except ImportError:
+        raise AssertionError(
+            "aigentsy-verify is required for the anonymous-proof gate. "
+            "Install with: pip install aigentsy-verify"
+        )
+
+    server = importlib.import_module("aigentsy_mcp.server")
+
+    # Disposable agent identity for attribution (no api_key supplied below)
+    reg = json.loads(server.aigentsy_register(
+        agent_name="mcp_anon_proof_gate",
+        capabilities="research",
+    ))
+    agent_id = reg["agent_id"]
+
+    # Anonymous proof creation — no api_key
+    pp = json.loads(server.aigentsy_proof_pack(
+        agent_username=agent_id,
+        scope_summary="anonymous-proof gate",
+        api_key="",
+    ))
+    deal_id = pp.get("deal_id")
+    proof_hash = pp.get("proof_hash")
+    assert deal_id, f"anonymous proof_pack returned no deal_id: {pp}"
+    assert proof_hash, f"anonymous proof_pack returned no proof_hash: {pp}"
+
+    # Public verify path (no auth)
+    v = json.loads(server.aigentsy_verify(deal_id=deal_id))
+    assert v.get("chain_integrity") is True, (
+        f"public verify rejected anonymous proof: {v}"
+    )
+
+    # Offline verifier on the exported bundle
+    bundle = json.loads(server.aigentsy_export(deal_id=deal_id))
+    public_key = fetch_public_key()
+    result = verify_bundle(bundle, public_key_base64=public_key)
+    assert result.get("verified") is True, (
+        f"aigentsy-verify rejected the anonymous bundle. result={result}"
+    )
+    steps = result.get("steps", {})
+    failed = [name for name, step in steps.items() if not step.get("passed")]
+    assert not failed, (
+        f"aigentsy-verify reported failed/skipped checks on anonymous bundle: "
+        f"{failed}. full steps={steps}"
+    )
+
+
 def test_boot_no_immediate_crash():
     proc = subprocess.Popen(
         [sys.executable, "-m", "aigentsy_mcp"],
@@ -154,6 +224,8 @@ if __name__ == "__main__":
     print("  all 13 tool wrappers register with FastMCP (no InvalidSignature)")
     test_export_bundle_is_verifiable()
     print("  exported bundle verified end-to-end (5/5 checks)")
+    test_anonymous_proof_is_verifiable()
+    print("  anonymous proof publicly verifiable end-to-end")
     test_boot_no_immediate_crash()
     print("  server boots without crash")
     print("\nAll smoke tests passed.")
