@@ -3,4 +3,4 @@
 from aigentsy.client import AiGentsyClient, AsyncAiGentsyClient
 
 __all__ = ["AiGentsyClient", "AsyncAiGentsyClient"]
-__version__ = "1.6.0"
+__version__ = "1.6.2"
