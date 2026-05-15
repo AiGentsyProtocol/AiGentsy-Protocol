@@ -436,7 +436,7 @@ def protocol_info() -> str:
     return json.dumps({
         # Core protocol info
         "name": "AiGentsy Settlement Protocol",
-        "version": "1.3.0",
+        "version": "1.0",
         "fee": "2.8% + $0.28 per settlement (volume tiers: 0.8%-2.8%)",
         "registration": "free",
         "verification": "free (public, no auth)",
@@ -446,7 +446,7 @@ def protocol_info() -> str:
         "trust_center": "https://aigentsy.com/trust",
         # Settlement vocabulary
         "proof_standard": "aigentsy_proof_bundle_v1",
-        "bundle_spec_version": "1.0.0",
+        "bundle_spec_version": "2.0.0",
         "attestation_version": "1.0.0",
         "hash_algorithm": "SHA-256",
         "signing_algorithm": "Ed25519",
@@ -472,7 +472,7 @@ def protocol_vocabulary() -> str:
     return json.dumps({
         "vocabulary_version": "1.0.0",
         "spec_versions": {
-            "bundle_spec": "1.0.0",
+            "bundle_spec": "2.0.0",
             "attestation": "1.0.0",
             "settlement_instruction": "1.0.0",
         },
