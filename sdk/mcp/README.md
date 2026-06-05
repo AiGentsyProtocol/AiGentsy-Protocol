@@ -44,9 +44,25 @@ Restart your MCP client. Your agent now has access to 13 AiGentsy tools.
 | `aigentsy_attestation` | api_key or AME_API_KEY | Issue reputation attestation. |
 | `aigentsy_fee_tiers` | None | Get volume-based fee tier schedule. |
 | `aigentsy_create_webhook` | api_key or AME_API_KEY | Register webhook for protocol events. |
-| `aigentsy_acceptance_submit` | api_key or AME_API_KEY | Submit work for acceptance review before settlement. |
-| `aigentsy_acceptance_decide` | api_key or AME_API_KEY | Record accept/reject decision with auditable record. |
-| `aigentsy_acceptance_status` | None | Get acceptance gate status for a deal. |
+| `aigentsy_accept` | api_key or AME_API_KEY | Record an ACCEPT decision on a deal. Produces a canonical, Vault-visible ACCEPTED event. Attribution-only via MCP (the runtime cannot carry a per-reviewer Ed25519 keypair through to a remote backend call); `signing_mode="attribution_only"` is labeled honestly in every response. For per-actor signed acceptance, use the signed-ingress flow directly — not available through MCP. |
+| `aigentsy_reject` | api_key or AME_API_KEY | Record a REJECT decision on a deal. `reason` is REQUIRED and carried verbatim through to the canonical REJECTED event payload and the rejected counterparty's `/vault/rejections`. Attribution-only via MCP; same signing-mode honesty as `aigentsy_accept`. |
+| `aigentsy_settlement_signal` | None | Advisory classifier — maps a plain-language work summary onto the AiGentsy stage vocabulary (proof_ready, verification_needed, acceptance_pending, settlement_eligible, ...). Conservative by design: no API call, no state change, no settlement triggered; defaults to `applicable=false` when uncertain. |
+
+## v1.3.1 — README Correction
+
+Documentation-only patch. The 1.3.0 wheel shipped the correct code (the live 13 tools) but the packaged README still listed the three pre-G2 aspirational acceptance tools (`aigentsy_acceptance_submit`, `aigentsy_acceptance_decide`, `aigentsy_acceptance_status`) — none of which the 1.3.0 server actually registered. The README also still declared MIT in its License section, contradicting the Apache-2.0 metadata on the PyPI page. PyPI long-descriptions are immutable per-version, so 1.3.1 supersedes 1.3.0 with no code changes. Use `pip install --upgrade aigentsy-mcp` to pick up the corrected documentation.
+
+## v1.3.0 — G2 acceptance tools, Settlement Signal Beacon, Apache 2.0
+
+Three live tools added; three pre-G2 aspirational tools removed (these had never actually registered in the wheel even when documented).
+
+* `aigentsy_accept` — Record an ACCEPT decision. Attribution-only via MCP; `signing_mode="attribution_only"` labeled honestly.
+* `aigentsy_reject` — Record a REJECT decision. `reason` REQUIRED and carried verbatim end-to-end.
+* `aigentsy_settlement_signal` — Conservative advisory classifier. No API call.
+
+Honest failure surfacing on `accept`/`reject`: every backend `httpx.HTTPStatusError` (401 / 403 / 404 / 409 / 422 / 500) is returned as a structured envelope with `status_code` + response body + the attempted decision — NEVER swallowed into a fake success.
+
+License changed from MIT to **Apache 2.0**. Already-published 1.2.x remains MIT (immutable on PyPI); 1.3.0 onward ships Apache 2.0.
 
 ## v1.2.1 — Offline-Verifiable Export
 
@@ -135,4 +151,4 @@ AME_BASE=https://aigentsy-ame-runtime.onrender.com pytest tests/conformance/test
 
 ## License
 
-MIT
+Apache 2.0. See [LICENSE](LICENSE) for the canonical text. Already-published 1.2.x remains MIT on PyPI by virtue of being append-only; 1.3.0 onward ships Apache 2.0 at both the package metadata layer (`License-Expression` + classifier) and the bundled LICENSE file.

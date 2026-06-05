@@ -4,10 +4,10 @@ build-backend = "hatchling.build"
 
 [project]
 name = "aigentsy-mcp"
-version = "1.2.2"
-description = "MCP server for the AiGentsy Settlement Protocol — proof, verification, and exactly-once settlement tools for Claude Desktop, Cursor, Cline, and any MCP-compatible runtime."
+version = "1.3.1"
+description = "MCP server for the AiGentsy Settlement Protocol — proof, verification, exactly-once settlement, acceptance gating, and the Settlement Signal Beacon for Claude Desktop, Cursor, Cline, and any MCP-compatible runtime."
 readme = "README.md"
-license = "MIT"
+license = "Apache-2.0"
 requires-python = ">=3.10"
 authors = [
     { name = "AiGentsy", email = "admin@aigentsy.com" },
@@ -19,7 +19,7 @@ keywords = [
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -31,6 +31,7 @@ classifiers = [
 dependencies = [
     "mcp[cli]>=1.0",
     "httpx>=0.27",
+    "aigentsy>=1.10.0",
 ]
 
 [project.scripts]

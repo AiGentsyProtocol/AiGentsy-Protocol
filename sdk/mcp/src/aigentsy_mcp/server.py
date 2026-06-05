@@ -1,17 +1,50 @@
 """
-AiGentsy MCP Tool Server
-=========================
+AiGentsy MCP Tool Server — Settlement Signal Beacon (Layer 1)
+==============================================================
 
-Exposes AiGentsy settlement primitives as MCP (Model Context Protocol) tools.
-Any MCP-compatible agent runtime (Claude, Cursor, Cline, OpenAI Agents SDK)
-can discover and invoke AiGentsy settlement without SDK installation.
+AiGentsy helps connected agents recognize when work needs proof,
+verification, acceptance, settlement, export, or auditable handoff —
+advisory, consent-by-installation, never broadcast.
+
+Exposes AiGentsy settlement primitives as MCP (Model Context Protocol)
+tools. Any MCP-compatible agent runtime (Claude Desktop, Cursor, Cline,
+OpenAI Agents SDK) can discover and invoke AiGentsy settlement without
+SDK installation. Tool descriptions are trigger-aware — each lead with
+"Use this when..." so a host LLM can recognize the WORK MOMENT, not
+just the operation.
 
 Tools:
-    aigentsy_register     — Register an AI agent, receive agent_id + API key
-    aigentsy_proof_pack   — Submit proof bundle for a deal
-    aigentsy_settle       — Settle a deal with exactly-once guarantee
-    aigentsy_verify       — Verify a proof bundle's chain integrity
-    aigentsy_export       — Export a portable v1 proof bundle for offline verification
+    aigentsy_register          — register an AI agent before settleable work
+    aigentsy_proof_pack        — produce a ProofPack at the handoff moment
+    aigentsy_settle            — record value-moves exactly-once after proof + acceptance
+    aigentsy_verify            — verify a counterparty's proof before relying on the work
+    aigentsy_export            — export a portable proof bundle for offline / audit / partner
+    aigentsy_proof_chain       — trace dependencies across multi-step / multi-agent work
+    aigentsy_settle_multi      — split an accepted deal's value among multiple agents
+    aigentsy_attestation       — vouch for an agent's reputation outside AiGentsy
+    aigentsy_fee_tiers         — estimate protocol cost before quoting
+    aigentsy_create_webhook    — subscribe to event-driven updates on proof / settlement / lifecycle
+    aigentsy_accept            — record an ACCEPTED decision on a deal (G2; attribution-only)
+    aigentsy_reject            — record a REJECTED decision on a deal (G2; attribution-only)
+    aigentsy_settlement_signal — ADVISORY meta-tool: classify a plain-language work summary
+                                 into the likely AiGentsy stage. Conservative by design:
+                                 no API call, no state change, no settlement triggered;
+                                 defaults to applicable=false when uncertain.
+
+Resources:
+    aigentsy://protocol/info                 — protocol metadata + verification URLs
+    aigentsy://protocol/vocabulary           — enums, constants, spec versions
+    aigentsy://protocol/settlement-signals   — machine-readable trigger vocabulary +
+                                                consent boundary + non-goals (Layer 1)
+    aigentsy://protocol/agent-system-prompt  — canonical settlement-native agent
+                                                system prompt v0.1 (file-backed from
+                                                prompts/settlement_native_agent_system_prompt.md)
+
+Consent boundary:
+    MCP is consent-by-installation. This beacon surfaces signals INSIDE
+    an authorized MCP session. It never contacts unaffiliated agents,
+    never broadcasts, never initiates outreach, never moves money,
+    never settles without proof + acceptance.
 
 Usage:
     # Run as stdio server (for Claude Desktop, Cursor, etc.)
@@ -27,6 +60,8 @@ Configuration:
 
 import json
 import os
+from pathlib import Path
+from typing import Any, Dict
 
 try:
     from mcp.server.fastmcp import FastMCP
@@ -36,6 +71,16 @@ except ImportError:
     )
 
 from aigentsy_mcp.client import AiGentsyClient
+
+# Canonical source of truth for the settlement-native agent system prompt.
+# The aigentsy://protocol/agent-system-prompt MCP resource serves this file
+# byte-for-byte. Keeping the prompt in a tracked .md file (not inline) means
+# the resource body and the human-readable mirror cannot drift.
+_AGENT_SYSTEM_PROMPT_PATH = (
+    Path(__file__).resolve().parent.parent
+    / "prompts"
+    / "settlement_native_agent_system_prompt.md"
+)
 
 # ── Config ──
 
@@ -74,8 +119,13 @@ def aigentsy_register(
 ) -> str:
     """Register a new AI agent on the AiGentsy settlement protocol.
 
+    **Use this when** an AI agent needs a protocol identity and API key
+    before producing settleable work — i.e., before its first ProofPack
+    or settlement. Onboarding step; one-time per agent. Save the
+    returned API key — it is required for proof-pack and settle
+    operations.
+
     Returns agent_id, API key, OCS tier, and escrow requirement.
-    Save the API key — it is required for proof-pack and settle operations.
 
     Args:
         agent_name: Display name for the agent (e.g. "design_agent_v2")
@@ -98,46 +148,44 @@ def aigentsy_register(
 def aigentsy_proof_pack(
     agent_username: str,
     scope_summary: str,
-    api_key: str = "",
+    api_key: str,
     vertical: str = "marketing",
-    proof_type: str = "research_summary",
+    proof_type: str = "creative_preview",
     proof_url: str = "",
 ) -> str:
-    """Submit a proof bundle to the AiGentsy protocol.
+    """Submit a proof bundle for a deal on the AiGentsy protocol — the
+    handoff moment.
 
-    When omitted, api_key creates an anonymous non-settlement proof. It is
-    publicly verifiable. Settlement, acceptance, attestation, and other
-    consequential actions require an authenticated actor. Proof is open;
-    consequence is authenticated.
+    **Use this when** an agent has produced a deliverable that needs
+    PROOF before acceptance, payment, release, deployment, or handoff.
+    This is the canonical "proof at handoff" entry point: it creates a
+    cryptographically hashed, scope-locked ProofPack that downstream
+    counterparties can verify before they accept or pay.
 
-    Returns deal_id, proof_hash, scope_lock_hash, and estimated_price.
+    Creates a ProofPack with cryptographic hashing and scope locking.
+    Returns deal_id, proof_hash, and estimated_price.
 
     Args:
-        agent_username: Your agent_id (from registration) — required even for
-            anonymous proofs, so the proof attributes to a stable identifier.
+        agent_username: Your agent_id from registration
         scope_summary: Description of the work completed
-        api_key: Optional. Your API key from aigentsy_register. Omit to
-            create an anonymous non-settlement proof (publicly verifiable);
-            supply to associate the proof with an authenticated actor.
+        api_key: Your API key from registration
         vertical: Service vertical (marketing, design, code, research, etc.)
-        proof_type: Type of proof. Default research_summary only requires
-            a timestamp (auto-injected). Other proof_types may require
-            additional fields in proof_data — see PROOF_TYPES in proof_pipe.
+        proof_type: Type of proof (creative_preview, test_results, code_diff, etc.)
         proof_url: URL to proof artifact (optional)
     """
-    from datetime import datetime, timezone
-
     _require("agent_username", agent_username)
     _require("scope_summary", scope_summary)
+    _require("api_key", api_key)
     client = _client(api_key)
-    proof_data = {"timestamp": datetime.now(timezone.utc).isoformat()}
+    proof_data = {"asset_type": "deliverable"}
+    if proof_url:
+        proof_data["preview_url"] = proof_url
     result = client.create_proof_pack(
         agent_username=agent_username,
         vertical=vertical,
         proof_type=proof_type,
         scope_summary=scope_summary,
         proof_data=proof_data,
-        attachment_url=proof_url,
     )
     return json.dumps({
         "deal_id": result.get("deal_id"),
@@ -156,10 +204,17 @@ def aigentsy_settle(
     api_key: str,
     proof_hash: str = "",
 ) -> str:
-    """Settle a deal with exactly-once guarantee.
+    """Settle a deal with exactly-once guarantee — the value-moves moment.
+
+    **Use this when** value is ready to move between counterparties
+    AFTER proof has been submitted and acceptance has occurred. This is
+    "settlement when value moves" — the protocol's value-transfer
+    primitive. Settlement is idempotent: replaying the same request
+    returns the same result, so safe to retry. Do NOT call this before
+    a ProofPack exists; do NOT call this before the counterparty has
+    accepted.
 
     Triggers fee deduction, payout routing, and transparency log entry.
-    Settlement is idempotent — replaying the same request returns the same result.
     Returns gross, net, fees, and settlement event details.
 
     Args:
@@ -176,32 +231,35 @@ def aigentsy_settle(
     _require("api_key", api_key)
     client = _client(api_key)
     result = client.settle(
-        deal_id=deal_id,
-        amount_usd=amount,
-        to_agent=counterparty_id,
+        deal_id, amount, actor_id, counterparty_id,
         proof_hash=proof_hash,
     )
     return json.dumps({
         "ok": result.get("ok"),
         "deal_id": deal_id,
-        "tx_id": result.get("tx_id"),
-        "gross_amount": result.get("gross_amount"),
-        "net_to_recipient": result.get("net_to_recipient"),
+        "gross": result.get("gross"),
+        "net": result.get("net"),
         "protocol_fee": result.get("protocol_fee"),
-        "from_agent": result.get("from_agent"),
-        "to_agent": result.get("to_agent"),
-        "provider": result.get("provider"),
-        "settled_at": result.get("settled_at"),
+        "platform_fee": result.get("platform_fee"),
+        "events_emitted": result.get("events_emitted"),
     })
 
 
 @mcp.tool()
 def aigentsy_verify(deal_id: str) -> str:
-    """Verify a deal's proof bundle chain integrity.
+    """Verify a deal's proof bundle chain integrity — the acceptance gate.
+
+    **Use this when** an agent or system is about to ACCEPT, PAY FOR,
+    DEPLOY, RELEASE, or otherwise RELY on another agent's work. This is
+    "verification at acceptance" — the public, no-auth-required check
+    that establishes whether the counterparty's proof is real before
+    the relying party commits to it. Call this BEFORE paying, before
+    merging code, before deploying a release, before accepting a
+    handoff.
 
     Checks hash chain integrity, Merkle inclusion, and proof validity.
-    This is a public endpoint — no API key required.
-    Returns chain_integrity status and verification details.
+    No API key required. Returns chain_integrity status and verification
+    details.
 
     Args:
         deal_id: The deal_id to verify
@@ -220,7 +278,14 @@ def aigentsy_verify(deal_id: str) -> str:
 
 @mcp.tool()
 def aigentsy_export(deal_id: str) -> str:
-    """Export a portable v1 proof bundle for offline verification.
+    """Export a portable v1 proof bundle for offline verification — the
+    auditable-handoff moment.
+
+    **Use this when** a proof must travel OUTSIDE AiGentsy: offline
+    verification, partner review, regulatory audit, archive, or
+    cross-ecosystem handoff. The exported bundle is self-contained and
+    can be verified with zero server access. Use this AFTER a ProofPack
+    exists for the deal.
 
     Returns a self-contained bundle with:
     - Proof records
@@ -229,7 +294,6 @@ def aigentsy_export(deal_id: str) -> str:
     - Ed25519 signed tree head
     - Bundle hash (SHA-256)
 
-    The bundle can be verified offline with zero access to AiGentsy's servers.
     See the Proof Bundle Spec at https://aigentsy.com/data/proof_bundle_spec.md
 
     Args:
@@ -246,10 +310,14 @@ def aigentsy_export(deal_id: str) -> str:
 
 @mcp.tool()
 def aigentsy_proof_chain(deal_id: str) -> str:
-    """Get proof chain provenance for a deal.
+    """Get proof-chain provenance for a deal — multi-step / multi-agent
+    dependency tracing.
 
-    Shows parent proofs (who this proof builds on) and child proofs
-    (who builds on this proof). Useful for tracing supply chains.
+    **Use this when** an agent or auditor must trace DEPENDENCIES
+    across multi-step or multi-agent work — i.e., when the current
+    deliverable was built on a prior agent's proof and that lineage
+    matters for acceptance, attribution, or settlement. Returns parent
+    proofs (what this builds on) and child proofs (what builds on this).
 
     Args:
         deal_id: The deal_id to query provenance for
@@ -267,10 +335,16 @@ def aigentsy_settle_multi(
     splits_json: str,
     api_key: str,
 ) -> str:
-    """Multi-party settlement with N-way splits.
+    """Multi-party settlement with N-way splits — multi-contributor
+    value-moves moment.
 
-    Settles a deal across multiple agents atomically. Each agent receives
-    their share minus protocol fees.
+    **Use this when** one accepted deal must split value among MULTIPLE
+    agents/contributors atomically — e.g., a bounty completed by a
+    team, a multi-agent supply chain, a creator + curator split. Like
+    `aigentsy_settle`, this is "settlement when value moves," but for
+    N-way splits. Do NOT call before proof + acceptance.
+
+    Each agent receives their share minus protocol fees, atomically.
 
     Args:
         deal_id: The deal_id to settle
@@ -283,17 +357,23 @@ def aigentsy_settle_multi(
     _require("api_key", api_key)
     client = _client(api_key)
     splits = json.loads(splits_json)
-    result = client.settle_multi(deal_id, total_amount_usd=total_amount, splits=splits)
+    result = client.settle_multi(deal_id, total_amount, splits)
     return json.dumps(result, default=str)
 
 
 @mcp.tool()
 def aigentsy_attestation(agent_id: str, api_key: str) -> str:
-    """Issue a portable reputation attestation (W3C Verifiable Credential).
+    """Issue a portable reputation attestation (W3C Verifiable Credential)
+    — reputation portability.
+
+    **Use this when** an agent's reputation / outcome history must be
+    VOUCHED FOR OUTSIDE AiGentsy — e.g., presenting credentials to a
+    non-AiGentsy marketplace, partner platform, regulator, or
+    cross-ecosystem registry. Other ecosystems verify the credential
+    against AiGentsy's public Ed25519 key without trusting AiGentsy.
 
     Creates a signed credential attesting the agent's OCS score, tier,
-    and settlement history. The credential is portable — other ecosystems
-    can verify it using AiGentsy's public Ed25519 key.
+    and settlement history.
 
     Args:
         agent_id: Agent to issue attestation for
@@ -307,11 +387,17 @@ def aigentsy_attestation(agent_id: str, api_key: str) -> str:
 
 
 @mcp.tool()
-def aigentsy_fee_tiers(placeholder: str = "") -> str:
-    """Get the volume-based fee tier schedule.
+def aigentsy_fee_tiers() -> str:
+    """Get the volume-based fee tier schedule — fee-aware quoting.
 
-    Shows the 4 fee tiers (Starter, Growth, Scale, Enterprise)
-    and their rates. Higher settlement volume = lower fees.
+    **Use this when** an agent is about to QUOTE a price or ROUTE
+    settlement and needs to estimate the protocol cost before
+    committing — i.e., to factor protocol fees into the quote, or to
+    decide which counterparty to route a multi-party deal through.
+    Informational; no auth required.
+
+    Shows the 4 fee tiers (Starter, Growth, Scale, Enterprise) and their
+    rates. Higher settlement volume = lower fees.
     """
     client = _client()
     result = client.get_fee_tiers()
@@ -325,10 +411,16 @@ def aigentsy_create_webhook(
     api_key: str,
     secret: str = "",
 ) -> str:
-    """Register a webhook for protocol events.
+    """Register a webhook for protocol events — event-driven reactivity.
 
-    Receive POST notifications when proof, settlement, or lifecycle
-    events occur. 19 event types available. Use "*" for all events.
+    **Use this when** an agent or system needs EVENT-DRIVEN UPDATES on
+    proof creation, verification, acceptance, settlement, lifecycle
+    transitions, or downstream changes — i.e., a reactive integration
+    instead of polling. Useful for orchestrators that need to know the
+    instant a counterparty's proof lands or a settlement clears.
+
+    Receive POST notifications when protocol events occur. 17 event
+    types available. Use "*" for all events.
 
     Args:
         url: HTTPS callback URL
@@ -345,86 +437,620 @@ def aigentsy_create_webhook(
     return json.dumps(result, default=str)
 
 
-# ── v1.1 Acceptance Gate Tools ──
+# ── G2: Vault Wiring — MCP acceptance tools ──
+#
+# Two thin wrappers — `aigentsy_accept` + `aigentsy_reject` — that close
+# the last sellability gap from the Pass 44 Vault wiring audit. Before
+# G2, MCP-native agents had no way to record an ACCEPTED / REJECTED
+# decision through MCP, though the same operations were fully wired
+# through the SDK / HTTP API. The MCP layer adds NO new backend
+# behavior: each tool simply calls the EXISTING acceptance methods on
+# the rich SDK (sdk/aigentsy/src/aigentsy/client.py) which in turn hits
+# the live endpoints:
+#
+#   POST /protocol/acceptance/submit             (auto-submit branch)
+#   POST /protocol/acceptance/{id}/accept        (decide=accept)
+#   POST /protocol/acceptance/{id}/reject        (decide=reject)
+#   GET  /protocol/acceptance/deal/{deal_id}     (deal→acceptance lookup)
+#
+# OPTION-3 POSTURE PRESERVED.
+#   The rich SDK's `decide_acceptance` branches client-side: no-key
+#   → attribution-only via the legacy endpoint; key + keypair supplied
+#   → signed via /protocol/event/{prepare,submit}; key + signing failure
+#   → fail-CLOSED block (Stage 7-B "Option 3"). The MCP runtime cannot
+#   carry a per-reviewer Ed25519 keypair through to a remote backend
+#   call — so by construction, MCP review is always attribution-only.
+#   Calling the legacy endpoint directly is exactly what
+#   `decide_acceptance` would do when no keypair is supplied
+#   (sdk/aigentsy/src/aigentsy/client.py:_decide_acceptance_attribution_only).
+#   The Option-3 block path therefore cannot fire from MCP; if any
+#   future backend posture starts gating attribution-only behind a
+#   block, the HTTP error is surfaced verbatim, never swallowed.
+#
+# FAILURE SURFACING.
+#   Every non-200 from the backend (401 / 403 / 404 / 409 / 422 / 500)
+#   is surfaced as a JSON envelope with the status code + response body
+#   + the deal/acceptance ids + the attempted decision. The host LLM
+#   sees the failure honestly; nothing is rewritten into a fake success.
+#
+# TENANT SCOPING.
+#   The reviewer's `api_key` is sent as `X-API-Key` on every backend
+#   call. The backend's existing `_auth(x_api_key)` resolves the api_key
+#   to one agent_id and that becomes the `reviewer_id` on the canonical
+#   ACCEPTED / REJECTED event. The MCP layer adds no new auth surface
+#   and bypasses nothing.
 
 
-@mcp.tool()
-def aigentsy_acceptance_submit(
+def _make_rich_client(api_key: str):
+    """Build a rich-SDK client carrying the caller's api_key.
+
+    Hoisted to module scope so tests can monkeypatch this factory with a
+    fake client (no network) and so the two acceptance tools share one
+    canonical construction path. Imports lazily because the rich SDK is
+    an optional sibling dependency and we want the rest of the MCP
+    server importable even if the rich SDK is unavailable.
+
+    In the published-package build, `aigentsy` is a declared dependency
+    (>=1.10.0) installed alongside this package, so `from aigentsy.client
+    import AiGentsyClient` resolves directly — no sys.path manipulation
+    is needed. The runtime-checkout sys.path hack used inside
+    aigentsy-ame-runtime is intentionally omitted here.
+    """
+    from aigentsy.client import AiGentsyClient as _RichClient
+    return _RichClient(AME_BASE, api_key=api_key)
+
+
+def _decide_acceptance_via_mcp(
+    decision: str,
     deal_id: str,
     api_key: str,
-    downstream_action: str = "settle",
-    review_deadline_seconds: int = 0,
+    reason: str,
+    acceptance_id: str,
+    downstream_action: str,
+    auto_submit: bool,
 ) -> str:
-    """Submit verified output for acceptance review before downstream action.
+    """Shared backend for aigentsy_accept / aigentsy_reject.
 
-    Gates settlement, release, or completion behind explicit accept/reject.
-    Requires a ProofPack to exist for the deal first.
+    Three steps, each calling EXISTING SDK methods:
+      1. Resolve deal_id → acceptance_id via `rc.get_acceptance(deal_id)`
+         (skipped if the caller supplied one).
+      2. If no acceptance exists and `auto_submit=True`, call
+         `rc.submit_for_acceptance(deal_id, downstream_action)`.
+      3. Call `rc.accept_output(...)` or `rc.reject_output(...)` — the
+         legacy attribution-only endpoint, the same surface
+         `decide_acceptance(keypair=None)` would call (per the SDK
+         source at _decide_acceptance_attribution_only).
 
-    Args:
-        deal_id: The deal_id with a verified proof
-        api_key: Your API key
-        downstream_action: Action on accept: settle, release, complete, publish
-        review_deadline_seconds: Optional deadline in seconds (0 = no deadline)
+    Any HTTP error is surfaced honestly with status_code + body — no
+    swallowing.
     """
-    _require("deal_id", deal_id)
-    _require("api_key", api_key)
-    client = _client(api_key)
-    result = client.acceptance_submit(
-        deal_id, downstream_action=downstream_action,
-        review_deadline_seconds=review_deadline_seconds,
-    )
-    return json.dumps(result, default=str)
+    import httpx
+
+    try:
+        rc = _make_rich_client(api_key)
+    except ImportError as e:
+        return json.dumps({
+            "ok": False,
+            "error": "sdk_unavailable",
+            "detail": (
+                "Rich SDK acceptance methods are not importable from "
+                "this runtime: " + str(e)
+            ),
+        })
+
+    try:
+        # Step 1: resolve deal_id → acceptance_id if not supplied.
+        if not acceptance_id:
+            lookup = rc.get_acceptance(deal_id)
+            acc = (lookup or {}).get("acceptance")
+            if acc and acc.get("acceptance_id"):
+                acceptance_id = acc["acceptance_id"]
+            elif auto_submit:
+                # Step 2: submit for acceptance to create the record.
+                sub = rc.submit_for_acceptance(
+                    deal_id, downstream_action=downstream_action,
+                )
+                sub_acc = (sub or {}).get("acceptance") or {}
+                acceptance_id = sub_acc.get("acceptance_id", "")
+                if not acceptance_id:
+                    return json.dumps({
+                        "ok": False,
+                        "error": "submit_returned_no_acceptance_id",
+                        "deal_id": deal_id,
+                        "decision": decision,
+                        "submit_response": sub,
+                    })
+            else:
+                return json.dumps({
+                    "ok": False,
+                    "error": "no_pending_acceptance",
+                    "deal_id": deal_id,
+                    "decision": decision,
+                    "detail": (
+                        "No pending acceptance for this deal. Pass "
+                        "auto_submit=True to create one automatically, "
+                        "or pass acceptance_id directly if known."
+                    ),
+                })
+
+        # Step 3: attribution-only accept / reject. The MCP layer cannot
+        # carry a per-reviewer Ed25519 keypair so by construction this
+        # is the same path `decide_acceptance(keypair=None)` would take.
+        if decision == "accept":
+            result = rc.accept_output(acceptance_id, reason=reason)
+        else:
+            result = rc.reject_output(acceptance_id, reason=reason)
+
+        return json.dumps({
+            "ok": result.get("ok"),
+            "deal_id": deal_id,
+            "acceptance_id": acceptance_id,
+            "decision": decision,
+            "reason": reason,
+            "downstream_action": downstream_action,
+            "signing_mode": "attribution_only",
+            "acceptance": result.get("acceptance"),
+            "downstream_triggered": result.get("downstream_triggered"),
+        })
+
+    except httpx.HTTPStatusError as e:
+        # Honest failure surfacing. status_code + body land in the
+        # response so the host LLM can react. Includes 401/403 (auth /
+        # tenant), 404 (no acceptance), 409/422 (state / validation),
+        # 5xx, and any future Option-3 block that the backend might
+        # surface on this path. Never swallowed.
+        body: Any
+        try:
+            body = e.response.json()
+        except Exception:
+            body = (e.response.text or "")[:512]
+        return json.dumps({
+            "ok": False,
+            "error": "backend_error",
+            "status_code": e.response.status_code,
+            "detail": body,
+            "deal_id": deal_id,
+            "acceptance_id": acceptance_id,
+            "decision": decision,
+        })
 
 
 @mcp.tool()
-def aigentsy_acceptance_decide(
-    acceptance_id: str,
-    decision: str,
+def aigentsy_accept(
+    deal_id: str,
     api_key: str,
     reason: str = "",
-    checks_passed: str = "",
-    checks_failed: str = "",
+    acceptance_id: str = "",
+    downstream_action: str = "settle",
+    auto_submit: bool = True,
 ) -> str:
-    """Record accept or reject decision on a pending acceptance gate.
+    """Record an ACCEPT decision on a deal — the acceptance moment.
 
-    Accepted outputs trigger the configured downstream action (settle, release, etc.).
-    Rejected outputs trigger hold or escalation.
+    **Use this when** a reviewer / buyer has reviewed a counterparty's
+    proof and decides to ACCEPT the work — triggering the configured
+    downstream action (settle, release, complete, publish). Produces a
+    canonical ACCEPTED record on the deal's event chain that is
+    Vault-visible, Merkle-anchored, and counted toward the reviewer's
+    OCS reliability. Settlement proceeds normally after ACCEPTED.
+
+    The MCP layer cannot carry a per-reviewer Ed25519 keypair, so this
+    tool always uses the attribution-only acceptance path — the same
+    path `decide_acceptance(keypair=None)` would take. For a per-actor
+    SIGNED ACCEPTED event, use the signed-ingress flow directly
+    (POST /protocol/event/{prepare,submit}); not available through MCP.
+
+    Honest failure surfacing: any 4xx / 5xx from the backend (auth /
+    tenant / not-found / state) is returned in the JSON envelope with
+    its status code + response body — never swallowed.
 
     Args:
-        acceptance_id: The acceptance_id from submit
-        decision: 'accept' or 'reject'
-        api_key: Your API key
-        reason: Reason for decision
-        checks_passed: Comma-separated checks that passed (optional)
-        checks_failed: Comma-separated checks that failed (optional)
+        deal_id: The deal to accept
+        api_key: Your API key (reviewer's key — backend resolves to the
+                 reviewer's agent_id and uses it as ACCEPTED.actor_id)
+        reason: Optional human-readable reason
+        acceptance_id: Optional — if the caller already has the
+                       acceptance_id, the deal_id→acceptance lookup is
+                       skipped
+        downstream_action: Action on accept: settle / release / complete
+                           / publish (default: settle)
+        auto_submit: If True and no pending acceptance exists, the tool
+                     auto-submits the deal for acceptance first (single
+                     extra call to /protocol/acceptance/submit). Default
+                     True so MCP-native agents see a one-call accept.
     """
-    _require("acceptance_id", acceptance_id)
-    _require("decision", decision)
+    _require("deal_id", deal_id)
     _require("api_key", api_key)
-    client = _client(api_key)
-    passed = [c.strip() for c in checks_passed.split(",") if c.strip()] if checks_passed else []
-    failed = [c.strip() for c in checks_failed.split(",") if c.strip()] if checks_failed else []
-    result = client.acceptance_decide(
-        acceptance_id, decision, reason=reason,
-        checks_passed=passed, checks_failed=failed,
+    return _decide_acceptance_via_mcp(
+        decision="accept",
+        deal_id=deal_id,
+        api_key=api_key,
+        reason=reason,
+        acceptance_id=acceptance_id,
+        downstream_action=downstream_action,
+        auto_submit=auto_submit,
     )
-    return json.dumps(result, default=str)
 
 
 @mcp.tool()
-def aigentsy_acceptance_status(deal_id: str) -> str:
-    """Get acceptance gate status for a deal.
+def aigentsy_reject(
+    deal_id: str,
+    reason: str,
+    api_key: str,
+    acceptance_id: str = "",
+    downstream_action: str = "settle",
+    auto_submit: bool = True,
+) -> str:
+    """Record a REJECT decision on a deal — the dispute-handoff moment.
 
-    Returns the acceptance record if one exists, or null if no gate
-    has been created. Public endpoint — no API key required.
+    **Use this when** a reviewer / buyer has reviewed a counterparty's
+    proof and decides to REJECT — failing quality bar, scope drift,
+    unverifiable claims, missing evidence. Produces a canonical
+    REJECTED record on the deal's event chain that is Vault-visible
+    (the rejected counterparty sees it on their `/vault/rejections`)
+    and available as audit-defense evidence.
+
+    `reason` is REQUIRED — the rejected counterparty needs to know why.
+    Settlement is held on REJECTED; subsequent re-submit + acceptance
+    can supersede it.
+
+    The MCP layer cannot carry a per-reviewer Ed25519 keypair, so this
+    tool always uses the attribution-only rejection path — the same
+    path `decide_acceptance(keypair=None)` would take. For a per-actor
+    SIGNED REJECTED event, use the signed-ingress flow directly
+    (POST /protocol/event/{prepare,submit}); not available through MCP.
+
+    Honest failure surfacing: any 4xx / 5xx from the backend (auth /
+    tenant / not-found / state) is returned in the JSON envelope with
+    its status code + response body — never swallowed.
 
     Args:
-        deal_id: The deal_id to check
+        deal_id: The deal to reject
+        reason: REQUIRED reason for the rejection
+        api_key: Your API key (reviewer's key — backend resolves to the
+                 reviewer's agent_id and uses it as REJECTED.actor_id)
+        acceptance_id: Optional — if the caller already has the
+                       acceptance_id, the deal_id→acceptance lookup is
+                       skipped
+        downstream_action: Action context: settle / release / complete /
+                           publish (default: settle)
+        auto_submit: If True and no pending acceptance exists, the tool
+                     auto-submits the deal for acceptance first. Default
+                     True so MCP-native agents see a one-call reject.
     """
     _require("deal_id", deal_id)
-    client = _client()
-    result = client.acceptance_status(deal_id)
-    return json.dumps(result, default=str)
+    _require("reason", reason)
+    _require("api_key", api_key)
+    return _decide_acceptance_via_mcp(
+        decision="reject",
+        deal_id=deal_id,
+        api_key=api_key,
+        reason=reason,
+        acceptance_id=acceptance_id,
+        downstream_action=downstream_action,
+        auto_submit=auto_submit,
+    )
+
+
+# ── Advisory Meta-Tool (Layer 1: Settlement Signal Beacon) ──
+#
+# `aigentsy_settlement_signal` is intentionally CONSERVATIVE: it is an
+# advisory classifier that returns `applicable=false` whenever the
+# evidence in the work_summary is ambiguous. A classifier that over-fires
+# erodes host-LLM trust faster than no classifier at all. The cost of
+# under-triggering is mildly unhelpful; the cost of over-triggering is
+# trust-eroding. The implementation biases accordingly:
+#
+#   * defaults to applicable=false / confidence=low when uncertain
+#   * applicable=true ONLY when the summary CLEARLY contains a
+#     settlement-relevant work moment (deliverable-complete + counterparty
+#     evaluation, explicit payment/release/deployment, multi-party split,
+#     audit/export, or dispute language)
+#   * suggested_message is null at low/medium confidence; at high
+#     confidence it is phrased as a QUESTION, never an instruction
+#   * rationale always names the matched trigger phrases (or states none
+#     detected) — transparent, auditable, not a black box
+#   * classification is simple deterministic rule logic over the
+#     protocol_stages vocabulary; not ML, no model call, no network
+#
+# The tool MUST NOT: make any API call, write any file, emit any event,
+# trigger any settlement, take any acceptance decision, run any
+# background job, contact any unaffiliated agent. It returns advice
+# inside the connected MCP session and stops.
+
+# Module-level trigger vocabulary — the same surface exposed by the
+# aigentsy://protocol/settlement-signals resource below. Keeping the data
+# at module scope makes the classifier auditable (these are the ONLY
+# trigger phrases that fire applicable=true).
+_SETTLEMENT_SIGNAL_STAGES: Dict[str, Dict[str, Any]] = {
+    "proof_ready": {
+        "definition": (
+            "Work has been completed and is about to be handed off; a "
+            "ProofPack would be the next step before acceptance or payment."
+        ),
+        "high_confidence_triggers": [
+            # Deliverable language paired with counterparty handoff / review / payment-pending.
+            ("finished", "deliverable"),
+            ("completed", "deliverable"),
+            ("delivered", "review"),
+            ("delivered", "payment"),
+            ("ready for", "client review"),
+            ("ready for", "buyer review"),
+            ("ready for", "handoff"),
+            ("handoff", "proof"),
+            ("ship", "deliverable"),
+            ("shipped", "client"),
+        ],
+        "next_tool": "aigentsy_proof_pack",
+    },
+    "verification_needed": {
+        "definition": (
+            "A relying party is about to act on, pay for, deploy, release, "
+            "or accept another agent's work and needs to verify the proof first."
+        ),
+        "high_confidence_triggers": [
+            ("verify", "before pay"),
+            ("verify", "before accept"),
+            ("verify", "before deploy"),
+            ("verify", "before release"),
+            ("buyer", "verify"),
+            ("counterparty", "verify"),
+            ("must verify", "work"),
+            ("must verify", "deliverable"),
+            ("check proof", "before"),
+            ("audit", "before accept"),
+        ],
+        "next_tool": "aigentsy_verify",
+    },
+    "settlement_ready": {
+        "definition": (
+            "Proof exists, the counterparty has accepted, and value is "
+            "ready to move — the settlement-when-value-moves moment."
+        ),
+        "high_confidence_triggers": [
+            ("accepted", "payout"),
+            ("accepted", "payment"),
+            ("accepted", "settle"),
+            ("approved", "payout"),
+            ("approved", "payment"),
+            ("ready", "payout"),
+            ("payout", "approved"),
+            ("release", "payment"),
+            ("clear", "payment"),
+        ],
+        "next_tool": "aigentsy_settle",
+    },
+    "settlement_ready_multi": {
+        # Sub-stage of settlement_ready; reported with stage=settlement_ready
+        # but next_tool=aigentsy_settle_multi when split language is present.
+        "definition": (
+            "Settlement-ready with multiple agents / contributors / "
+            "creators sharing the value."
+        ),
+        "high_confidence_triggers": [
+            ("split", "payout"),
+            ("split", "payment"),
+            ("multi-agent", "split"),
+            ("multi-agent", "bounty"),
+            ("multiple agents", "split"),
+            ("multiple contributors", "split"),
+            ("share", "payout"),
+            ("bounty", "split"),
+        ],
+        "next_tool": "aigentsy_settle_multi",
+    },
+    "delivered_for_audit": {
+        # Sub-stage of delivered; reported with stage=delivered but
+        # next_tool=aigentsy_export when audit/external/offline language fires.
+        "definition": (
+            "Work is delivered AND must travel outside AiGentsy for "
+            "offline / audit / partner / archive verification."
+        ),
+        "high_confidence_triggers": [
+            ("external auditor", "proof"),
+            ("auditor", "bundle"),
+            ("offline", "verify"),
+            ("offline", "verification"),
+            ("partner", "verification"),
+            ("archive", "proof"),
+            ("regulator", "proof"),
+            ("export", "proof bundle"),
+        ],
+        "next_tool": "aigentsy_export",
+    },
+    "dispute_opened": {
+        "definition": (
+            "A counterparty has raised an objection / dispute over the "
+            "delivered work or the settlement."
+        ),
+        "high_confidence_triggers": [
+            ("dispute",),
+            ("disputed",),
+            ("contest",),
+            ("reject delivery",),
+            ("refund request",),
+        ],
+        "next_tool": "aigentsy_verify",   # verify proof first; dispute resolution lives outside MCP
+    },
+}
+
+# Negative triggers — when ANY of these are present in a summary, the
+# classifier MUST stay applicable=false, regardless of other matches.
+# These catch the "in-progress / brainstorming / drafting" cases that
+# look settlement-adjacent but are actually pre-deliverable.
+_SETTLEMENT_SIGNAL_NEGATIVE_TRIGGERS = [
+    "brainstorm",
+    "brainstorming",
+    "drafting",
+    "draft",
+    "planning",
+    "ideating",
+    "ideation",
+    "exploring",
+    "considering",
+    "thinking about",
+    "wip",
+    "work in progress",
+    "in progress",
+    "not yet delivered",
+    "nothing delivered",
+    "no proof yet",
+    "haven't shipped",
+    "have not shipped",
+    "early stage",
+]
+
+
+def _classify_settlement_signal(work_summary: str) -> Dict[str, Any]:
+    """Pure deterministic classifier. Conservative by design.
+
+    Public separation from the @mcp.tool() wrapper so the same logic can
+    be exercised directly in tests without touching the MCP transport.
+
+    Returns the structured advisory envelope. NO network. NO state."""
+    text = (work_summary or "").strip().lower()
+    if not text:
+        return {
+            "applicable": False,
+            "stage": "not_applicable",
+            "confidence": "low",
+            "rationale": "empty work_summary; nothing to classify",
+            "next_tool": None,
+            "suggested_message": None,
+            "consent_boundary": (
+                "Advisory inside an authorized MCP session. Does not contact unaffiliated agents."
+            ),
+        }
+
+    # Negative-trigger gate: catches pre-deliverable / WIP language so
+    # the classifier under-fires on ambiguous in-progress work.
+    matched_negatives = [neg for neg in _SETTLEMENT_SIGNAL_NEGATIVE_TRIGGERS if neg in text]
+    if matched_negatives:
+        return {
+            "applicable": False,
+            "stage": "not_applicable",
+            "confidence": "low",
+            "rationale": (
+                f"pre-deliverable / in-progress language detected: "
+                f"{', '.join(repr(n) for n in matched_negatives)}; "
+                f"no proof/acceptance/settlement trigger applies yet"
+            ),
+            "next_tool": None,
+            "suggested_message": None,
+            "consent_boundary": (
+                "Advisory inside an authorized MCP session. Does not contact unaffiliated agents."
+            ),
+        }
+
+    # Walk each stage's high-confidence triggers. A "trigger" is a tuple
+    # of substrings ALL of which must be present (allowing simple
+    # multi-phrase conditions like ("finished","deliverable") to fire
+    # on "agent finished deliverable for client review" but NOT on
+    # "finished a draft, no deliverable yet").
+    for stage_label, stage_def in _SETTLEMENT_SIGNAL_STAGES.items():
+        for trigger in stage_def["high_confidence_triggers"]:
+            if all(phrase in text for phrase in trigger):
+                # Map sub-stages to their canonical protocol_stages values.
+                canonical_stage = (
+                    "settlement_ready" if stage_label.startswith("settlement_ready")
+                    else "delivered" if stage_label == "delivered_for_audit"
+                    else stage_label
+                )
+                next_tool = stage_def["next_tool"]
+                matched_phrases = " + ".join(repr(p) for p in trigger)
+                suggested_message_by_stage = {
+                    "proof_ready": (
+                        "Does this completed deliverable need a ProofPack "
+                        "before acceptance or payment?"
+                    ),
+                    "verification_needed": (
+                        "Has the counterparty's proof bundle been verified "
+                        "before acting on this work?"
+                    ),
+                    "settlement_ready": (
+                        "Is this deal ready to settle now that proof + acceptance are in place?"
+                    ),
+                    "settlement_ready_multi": (
+                        "Should this accepted deal settle as a multi-party split?"
+                    ),
+                    "delivered_for_audit": (
+                        "Should the proof bundle be exported for offline / partner / audit review?"
+                    ),
+                    "dispute_opened": (
+                        "Should the proof bundle be re-verified before further action on this dispute?"
+                    ),
+                }
+                return {
+                    "applicable": True,
+                    "stage": canonical_stage,
+                    "confidence": "high",
+                    "rationale": f"matched: {matched_phrases}",
+                    "next_tool": next_tool,
+                    "suggested_message": suggested_message_by_stage[stage_label],
+                    "consent_boundary": (
+                        "Advisory inside an authorized MCP session. "
+                        "Does not contact unaffiliated agents."
+                    ),
+                }
+
+    # No high-confidence trigger matched. Conservative default.
+    return {
+        "applicable": False,
+        "stage": "not_applicable",
+        "confidence": "low",
+        "rationale": (
+            "no proof/acceptance/settlement/payment/release/deployment/handoff "
+            "trigger phrase matched in work_summary"
+        ),
+        "next_tool": None,
+        "suggested_message": None,
+        "consent_boundary": (
+            "Advisory inside an authorized MCP session. Does not contact unaffiliated agents."
+        ),
+    }
+
+
+@mcp.tool()
+def aigentsy_settlement_signal(work_summary: str) -> str:
+    """ADVISORY: classify a plain-language work summary into the AiGentsy
+    settlement stage that applies — IF any does.
+
+    **Use this when** a host LLM or connected agent has described its
+    current work in natural language and wants an advisory hint about
+    whether an AiGentsy step (proof, verification, acceptance,
+    settlement, export, dispute) is relevant RIGHT NOW.
+
+    Conservative by design: this tool ERRS TOWARD applicable=false. It
+    only returns applicable=true when the summary contains an explicit,
+    high-confidence trigger phrase for a settlement-relevant work
+    moment. When ambiguous (drafting, planning, WIP), it stays silent.
+
+    Pure and local. NO API call, NO state change, NO settlement, NO
+    network access. Advisory only — the host LLM remains the decision-
+    maker. `suggested_message` is phrased as a QUESTION when present,
+    never as an instruction. `rationale` always names the matched
+    trigger phrases (or states none detected) so the classification is
+    auditable.
+
+    Returns a JSON envelope:
+        {
+          "applicable": bool,
+          "stage": one of opportunity_found | proof_ready | verification_needed
+                   | acceptance_needed | go_approved | delivered |
+                   settlement_ready | settled | outcome_recorded |
+                   dispute_opened | not_applicable,
+          "confidence": "low" | "medium" | "high",
+          "rationale": str (names matched triggers or states none),
+          "next_tool": tool name or null,
+          "suggested_message": question-form string at high confidence, else null,
+          "consent_boundary": str (advisory-inside-MCP-session disclaimer)
+        }
+
+    Args:
+        work_summary: Plain-language description of the agent's current
+                       work moment (e.g., "agent finished deliverable for
+                       client review, payment pending").
+    """
+    return json.dumps(_classify_settlement_signal(work_summary))
 
 
 # ── Resources ──
@@ -436,6 +1062,8 @@ def protocol_info() -> str:
     return json.dumps({
         # Core protocol info
         "name": "AiGentsy Settlement Protocol",
+        # A2A Settlement Protocol API surface version — must match the value
+        # advertised by GET /protocol/info on the runtime.
         "version": "1.0",
         "fee": "2.8% + $0.28 per settlement (volume tiers: 0.8%-2.8%)",
         "registration": "free",
@@ -446,6 +1074,8 @@ def protocol_info() -> str:
         "trust_center": "https://aigentsy.com/trust",
         # Settlement vocabulary
         "proof_standard": "aigentsy_proof_bundle_v1",
+        # Mirrors protocol/bundle_spec.SPEC_VERSION — the value the bundle
+        # exporter actually emits. Update both together if the bundle format evolves.
         "bundle_spec_version": "2.0.0",
         "attestation_version": "1.0.0",
         "hash_algorithm": "SHA-256",
@@ -472,6 +1102,9 @@ def protocol_vocabulary() -> str:
     return json.dumps({
         "vocabulary_version": "1.0.0",
         "spec_versions": {
+            # Mirrors protocol/bundle_spec.SPEC_VERSION — keep in sync with the
+            # bundle exporter and with the bundle_spec_version field in
+            # aigentsy://protocol/info above.
             "bundle_spec": "2.0.0",
             "attestation": "1.0.0",
             "settlement_instruction": "1.0.0",
@@ -509,6 +1142,111 @@ def protocol_vocabulary() -> str:
             "proof_standard": "aigentsy_proof_bundle_v1",
         },
     })
+
+
+@mcp.resource("aigentsy://protocol/settlement-signals")
+def protocol_settlement_signals() -> str:
+    """Machine-readable trigger vocabulary for the Settlement Signal Beacon
+    (Layer 1). Stages, definitions, high-confidence trigger phrases,
+    recommended next tool per stage, consent boundary, and explicit
+    non-goals. Consumed by host LLMs that want to self-train against the
+    same vocabulary the `aigentsy_settlement_signal` meta-tool uses."""
+    # Reuse the same authoritative table the classifier uses; keeping
+    # them in one place ensures the resource and the tool never drift.
+    return json.dumps({
+        "vocabulary_version": "1.0.0",
+        "layer": "Layer 1 — Settlement Signal Beacon",
+        "purpose": (
+            "AiGentsy helps connected agents recognize when work needs "
+            "proof, verification, acceptance, settlement, export, or "
+            "auditable handoff. This resource declares the trigger "
+            "vocabulary the advisory meta-tool uses, so host LLMs can "
+            "self-classify with the same rules."
+        ),
+        "framing": (
+            "Proof at handoff. Verification at acceptance. Settlement "
+            "when value moves. Portable verification for partners, "
+            "audit, and archive."
+        ),
+        "stages": {
+            label: {
+                "definition": defn["definition"],
+                "high_confidence_triggers": [
+                    list(trigger) for trigger in defn["high_confidence_triggers"]
+                ],
+                "next_tool": defn["next_tool"],
+            }
+            for label, defn in _SETTLEMENT_SIGNAL_STAGES.items()
+        },
+        "negative_triggers": list(_SETTLEMENT_SIGNAL_NEGATIVE_TRIGGERS),
+        "negative_trigger_purpose": (
+            "When ANY of these phrases is present in a work_summary, the "
+            "advisory meta-tool stays applicable=false. They catch "
+            "pre-deliverable / in-progress / drafting / planning language "
+            "that looks settlement-adjacent but is not yet a settlement moment."
+        ),
+        "classification_posture": {
+            "default": "applicable=false / confidence=low",
+            "applicable_true_requires": (
+                "an explicit high-confidence trigger phrase match "
+                "AND no negative trigger present"
+            ),
+            "suggested_message_phrasing": (
+                "Always a QUESTION, never an instruction. Returned only at "
+                "confidence=high; null at low/medium."
+            ),
+            "rationale_contract": (
+                "Always names the matched trigger phrases (or states "
+                "explicitly that none were detected)."
+            ),
+            "bias": (
+                "Under-triggering is mildly unhelpful; over-triggering is "
+                "trust-eroding. The classifier biases toward under-triggering."
+            ),
+        },
+        "consent_boundary": (
+            "MCP is consent-by-installation. This beacon surfaces signals "
+            "INSIDE an authorized MCP session that the host owner connected. "
+            "It never contacts unaffiliated agents, never broadcasts, never "
+            "initiates outreach."
+        ),
+        "non_goals": [
+            "No broadcast to unaffiliated agents — full stop.",
+            "No autonomous outreach, scraping, or background jobs.",
+            "No payment custody — AiGentsy never holds counterparty funds via this beacon.",
+            "No settlement without a ProofPack AND acceptance — the beacon advises, it does not authorize.",
+            "No hidden prompting — every classification names the matched trigger phrases.",
+            "No ML / model call inside the meta-tool — pure deterministic rule logic.",
+            "Not a recommendation engine — does not push agents to settle work that does not need settling.",
+        ],
+        "host_llm_usage_hint": (
+            "Call aigentsy_settlement_signal(work_summary) with a plain-language "
+            "description of the agent's current work moment. If applicable=true "
+            "and confidence=high, ask the owner the returned suggested_message "
+            "before calling next_tool. If applicable=false, do nothing — there "
+            "is no settlement-relevant moment to act on."
+        ),
+    })
+
+
+@mcp.resource("aigentsy://protocol/agent-system-prompt")
+def protocol_agent_system_prompt() -> str:
+    """Canonical settlement-native agent system prompt v0.1.
+
+    Returned read-only from prompts/settlement_native_agent_system_prompt.md
+    in the runtime repo. File-backed so the human-readable mirror and the
+    MCP resource cannot drift; the file is the single source of truth.
+
+    Consumed by MCP hosts that want to inject a consent-bound, settlement-
+    aware operating stance into agents they run. The prompt distinguishes
+    drafts from handoff-ready work, frames verification as not-acceptance,
+    requires acceptance before settlement, and explicitly disclaims
+    broadcast / autonomous outreach / unaffiliated-agent contact.
+
+    No network call. No API call. No state change. No outreach behavior.
+    Reading this resource only opens and reads a local file.
+    """
+    return _AGENT_SYSTEM_PROMPT_PATH.read_text(encoding="utf-8")
 
 
 # ── Entry Point ──
