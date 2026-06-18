@@ -31,6 +31,9 @@ def test_imports():
 
 def test_tool_count():
     mod = importlib.import_module("aigentsy_mcp.server")
+    # Synced to the actual tools registered in server.py (was previously
+    # listing aspirational acceptance_submit/decide/status names that did
+    # not match reality). Pass 82J adds aigentsy_inference_evaluate.
     expected_tools = {
         "aigentsy_register",
         "aigentsy_proof_pack",
@@ -42,9 +45,10 @@ def test_tool_count():
         "aigentsy_attestation",
         "aigentsy_fee_tiers",
         "aigentsy_create_webhook",
-        "aigentsy_acceptance_submit",
-        "aigentsy_acceptance_decide",
-        "aigentsy_acceptance_status",
+        "aigentsy_accept",
+        "aigentsy_reject",
+        "aigentsy_settlement_signal",
+        "aigentsy_inference_evaluate",
     }
     actual_tools = {name for name in expected_tools if hasattr(mod, name)}
     missing = expected_tools - actual_tools
@@ -56,11 +60,13 @@ def test_fastmcp_signatures_valid():
 
     Guards against parameter names beginning with '_' (FastMCP rejects them)
     and any other signature constraint that would prevent stdio tool dispatch.
+
+    Pass 82J — bumped expected count 13 → 14 for aigentsy_inference_evaluate.
     """
     mod = importlib.import_module("aigentsy_mcp.server")
     tool_names = asyncio.run(_collect_tool_names(mod.mcp))
-    assert len(tool_names) == 13, (
-        f"FastMCP registered {len(tool_names)} tools, expected 13. "
+    assert len(tool_names) == 14, (
+        f"FastMCP registered {len(tool_names)} tools, expected 14. "
         f"Got: {sorted(tool_names)}"
     )
 

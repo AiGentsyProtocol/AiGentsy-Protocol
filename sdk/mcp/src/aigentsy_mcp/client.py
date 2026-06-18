@@ -118,3 +118,45 @@ class AiGentsyClient:
 
     def acceptance_status(self, deal_id: str) -> Dict[str, Any]:
         return self._get(f"/protocol/acceptance/deal/{deal_id}")
+
+    # ── Acceptance Runtime · Inference Acceptance Layer (Pass 82J) ──
+
+    def evaluate_inference(
+        self,
+        prompt: str,
+        raw_output: str,
+        policy: Dict[str, Any],
+        consequence: Optional[Dict[str, Any]] = None,
+        required_evidence: Optional[Dict[str, bool]] = None,
+        risk_tier: str = "medium",
+        model_metadata: Optional[Dict[str, Any]] = None,
+        expected_decision: Optional[str] = None,
+        intended_action: str = "",
+    ) -> Dict[str, Any]:
+        """POST /acceptance-runtime/evaluate via the existing runtime.
+
+        Pass 82J · MCP Consequence Middleware. Delegates the decision to
+        the live Acceptance Runtime evaluator (Pass 82G). No new evaluator,
+        no new endpoint, no new bundle format.
+
+        ``intended_action`` is folded ADDITIVELY into the outgoing
+        consequence payload as ``consequence["intended_action"]`` so it
+        lands on ``INFERENCE_CONSEQUENCE_RECORDED.payload`` for NEW
+        evaluations only. Existing event chains and bundle hashes are
+        unaffected.
+        """
+        cons = dict(consequence or {})
+        if intended_action:
+            cons["intended_action"] = intended_action
+        body: Dict[str, Any] = {
+            "prompt": prompt,
+            "raw_output": raw_output,
+            "policy": policy or {},
+            "required_evidence": required_evidence or {},
+            "consequence": cons,
+            "risk_tier": risk_tier or "medium",
+            "model_metadata": model_metadata or {},
+        }
+        if expected_decision:
+            body["expected_decision"] = expected_decision
+        return self._post("/acceptance-runtime/evaluate", body)

@@ -731,6 +731,207 @@ def aigentsy_reject(
     )
 
 
+# ── Acceptance Runtime · Inference Acceptance Layer (Pass 82J) ──
+
+
+@mcp.tool()
+def aigentsy_inference_evaluate(
+    prompt: str,
+    raw_output: str,
+    policy: str,
+    consequence: str,
+    api_key: str,
+    required_evidence: str = "",
+    risk_tier: str = "medium",
+    model_metadata: str = "",
+    expected_decision: str = "",
+    intended_action: str = "",
+) -> str:
+    """Evaluate an LLM/agent/workflow output through the AiGentsy Acceptance Runtime
+    — the consequence-middleware moment for ANY model.
+
+    **Use this when** an AI, agent, or workflow has produced an output that
+    might trigger consequence (payment, deployment, handoff, API action,
+    procurement, publication, state change, etc.) and you need a runtime
+    decision BEFORE the consequence fires. The Acceptance Runtime returns
+    one of four decisions — ``accepted`` / ``rejected`` / ``retry`` /
+    ``escalated`` — and one of three consequence states — ``allowed`` /
+    ``blocked`` / ``held`` — recorded as a 4-event canonical lifecycle in
+    the Vault. The signed evidence bundle is exportable through the existing
+    ``/acceptance-runtime/runs/{run_id}/export`` path; the same 5-step
+    offline verifier handles it.
+
+    AiGentsy is the Consequence Layer: it does NOT call the model provider,
+    does NOT improve the model's intelligence, and does NOT guarantee
+    correctness — it governs whether the output is allowed to become
+    downstream consequence under the policy + evidence the caller supplied.
+
+    The MCP layer cannot carry a per-model-actor Ed25519 keypair, so this
+    tool uses the platform-attested / attribution-only path (the same
+    posture as ``aigentsy_accept`` / ``aigentsy_reject``). The runtime
+    emits spec_version=2.0.0 events; per-actor signed inference bundles
+    are planned in a future spec_version=3.0.0 sidecar (see the 82J
+    planning doc).
+
+    Args:
+        prompt: The model prompt (or task description).
+        raw_output: The model's raw output (text). The caller supplies it;
+                    AiGentsy does not call the provider.
+        policy: JSON string describing the policy. Required keys
+                ``policy_id`` and ``required_evidence`` (a list of evidence
+                field names the policy mandates). Optional ``summary``.
+        consequence: JSON string describing the downstream consequence:
+                     ``kind`` (payout / deploy / po_issue / api_call /
+                     published_answer / etc.) + ``scope``. Optional
+                     ``amount_usd``.
+        api_key: Your AiGentsy API key (caller's identity context for the
+                 evaluation; X-API-Key header).
+        required_evidence: Optional JSON object mapping each evidence field
+                           to its boolean check result. Empty → no evidence
+                           is treated as present, policy_compliance falls to 0.
+        risk_tier: ``low`` / ``medium`` / ``high`` (default ``medium``).
+                   Drives the escalated branch when evidence is missing.
+        model_metadata: Optional JSON object with ``name``, ``provider``,
+                        ``notes``. Recorded verbatim on
+                        ``INFERENCE_EVIDENCE_SUBMITTED.payload.model``.
+        expected_decision: Optional — when set to one of
+                           ``accepted`` / ``rejected`` / ``retry`` /
+                           ``escalated``, the evaluator records that as
+                           the canonical decision (used by demo/fixture
+                           replay). Production callers leave this empty.
+        intended_action: Optional human-readable description of WHAT the
+                         consequence would actually trigger (e.g. "PATCH
+                         /v1/customers/cust_2034 with renewal_date"). When
+                         supplied, it is folded ADDITIVELY into the
+                         outgoing ``consequence`` payload as
+                         ``consequence.intended_action`` and lands on
+                         ``INFERENCE_CONSEQUENCE_RECORDED.payload.intended_action``
+                         for NEW evaluations only. Does NOT alter any
+                         pre-existing event hash, bundle hash, signing
+                         schema, or verifier behavior.
+    """
+    _require("prompt", prompt)
+    _require("raw_output", raw_output)
+    _require("policy", policy)
+    _require("consequence", consequence)
+    _require("api_key", api_key)
+
+    # Parse the JSON string args. ValueError messages do NOT echo the
+    # api_key or any other secret — the only structured content surfaced
+    # is the user-supplied JSON shape they passed in.
+    try:
+        policy_obj = json.loads(policy) if isinstance(policy, str) else (policy or {})
+    except Exception as e:
+        raise ValueError(f"policy must be a JSON object string: {type(e).__name__}")
+    try:
+        consequence_obj = json.loads(consequence) if isinstance(consequence, str) else (consequence or {})
+    except Exception as e:
+        raise ValueError(f"consequence must be a JSON object string: {type(e).__name__}")
+    required_evidence_obj: Dict[str, Any] = {}
+    if required_evidence:
+        try:
+            required_evidence_obj = json.loads(required_evidence) if isinstance(required_evidence, str) else (required_evidence or {})
+        except Exception as e:
+            raise ValueError(f"required_evidence must be a JSON object string: {type(e).__name__}")
+    model_metadata_obj: Dict[str, Any] = {}
+    if model_metadata:
+        try:
+            model_metadata_obj = json.loads(model_metadata) if isinstance(model_metadata, str) else (model_metadata or {})
+        except Exception as e:
+            raise ValueError(f"model_metadata must be a JSON object string: {type(e).__name__}")
+
+    client = _client(api_key)
+    try:
+        result = client.evaluate_inference(
+            prompt=prompt,
+            raw_output=raw_output,
+            policy=policy_obj,
+            consequence=consequence_obj,
+            required_evidence=required_evidence_obj,
+            risk_tier=risk_tier or "medium",
+            model_metadata=model_metadata_obj,
+            expected_decision=(expected_decision or None),
+            intended_action=intended_action or "",
+        )
+    except Exception as e:
+        # Honest failure surfacing — same posture as aigentsy_accept /
+        # aigentsy_reject. Surface the failure shape via the response
+        # envelope rather than raising. Never echo api_key or env vars.
+        import httpx as _httpx
+        if isinstance(e, _httpx.HTTPStatusError):
+            try:
+                body = e.response.json()
+            except Exception:
+                body = {"raw_text": (e.response.text or "")[:400]}
+            return json.dumps({
+                "ok": False,
+                "error_class": "HTTPStatusError",
+                "status_code": e.response.status_code,
+                "response": body,
+                "labels": ["mcp_inference_evaluation", "mcp_consequence_middleware", "acceptance_runtime"],
+                "claim_boundary": {
+                    "bring_any_model": True,
+                    "does_not_call_model_provider": True,
+                    "does_not_improve_model_intelligence": True,
+                    "does_not_guarantee_correctness": True,
+                    "governs_consequence": True,
+                },
+            })
+        return json.dumps({
+            "ok": False,
+            "error_class": type(e).__name__,
+            "safe_error": str(e)[:240],
+            "labels": ["mcp_inference_evaluation", "mcp_consequence_middleware", "acceptance_runtime"],
+            "claim_boundary": {
+                "bring_any_model": True,
+                "does_not_call_model_provider": True,
+                "does_not_improve_model_intelligence": True,
+                "does_not_guarantee_correctness": True,
+                "governs_consequence": True,
+            },
+        })
+
+    # Successful path — return a SANITIZED envelope. Never echo api_key
+    # or any header/env-var material. Surface only the runtime-emitted
+    # decision metadata + the public export path.
+    run_id = result.get("run_id") or ""
+    export_path = f"/acceptance-runtime/runs/{run_id}/export" if run_id else ""
+    hoverstack = result.get("hoverstack") or {}
+    envelope: Dict[str, Any] = {
+        "ok": bool(result.get("ok")),
+        "run_id": run_id,
+        "deal_id": result.get("deal_id"),
+        "decision": result.get("decision"),
+        "consequence_state": result.get("consequence_state"),
+        "reason": result.get("reason"),
+        "policy_compliance": result.get("policy_compliance"),
+        "evidence_completeness": result.get("evidence_completeness"),
+        "escalation_route": result.get("escalation_route"),
+        "retry_remaining": result.get("retry_remaining"),
+        "hoverstack_reuse_kind": hoverstack.get("reuse_kind"),
+        "decision_envelope_ref": result.get("decision_envelope_ref"),
+        "attestation_class": result.get("attestation_class"),
+        "spec_version": result.get("spec_version"),
+        "export_path": export_path,
+        "labels": [
+            "mcp_inference_evaluation",
+            "mcp_consequence_middleware",
+            "acceptance_runtime",
+            "proofpack_export_available",
+        ],
+        "claim_boundary": {
+            "bring_any_model": True,
+            "does_not_call_model_provider": True,
+            "does_not_improve_model_intelligence": True,
+            "does_not_guarantee_correctness": True,
+            "governs_consequence": True,
+        },
+    }
+    if intended_action:
+        envelope["intended_action"] = intended_action
+    return json.dumps(envelope)
+
+
 # ── Advisory Meta-Tool (Layer 1: Settlement Signal Beacon) ──
 #
 # `aigentsy_settlement_signal` is intentionally CONSERVATIVE: it is an
