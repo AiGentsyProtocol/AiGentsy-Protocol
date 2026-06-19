@@ -1,0 +1,7 @@
+{
+  "actor_id": "test:acceptance_runtime_agent",
+  "key_id": "test_actor_v1",
+  "private_key_base64": "+BsAsSBsE984QyIHOoJfxyps43ucdfrMwQzK+/MWTdU=",
+  "public_key_base64": "BeGzS6gvoPSqaWPZkdbAhO68s6dYKzsDlzhH8tWkxDo=",
+  "note": "Test-only keypair for Pass 82Q-A actor-signature sidecar fixture. NOT a production key. Generated locally; do not commit to a public registry."
+}

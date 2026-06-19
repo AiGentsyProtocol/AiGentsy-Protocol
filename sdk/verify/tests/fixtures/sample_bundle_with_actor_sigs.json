@@ -1,0 +1,69 @@
+{
+  "spec_version": "1.0.0",
+  "deal_id": "deal_sample_test",
+  "proofs": [
+    {
+      "proof_type": "screenshot",
+      "url": "https://example.com/proof/logo_v1.png"
+    }
+  ],
+  "events": [
+    {
+      "event_id": "evt_sample_001",
+      "event_type": "DEAL_CREATED",
+      "deal_id": "deal_sample_test",
+      "actor_id": "agent_demo_abc123",
+      "timestamp": "2026-03-15T10:00:00Z",
+      "payload": {
+        "amount": 250.0,
+        "currency": "USD",
+        "description": "Logo design"
+      },
+      "prev_hash": "",
+      "hash": "ddf26a1c222fc783ac382c942a072f67795904393dd4bab1fe3105f7e62bdcbd"
+    },
+    {
+      "event_id": "evt_sample_002",
+      "event_type": "PROOF_READY",
+      "deal_id": "deal_sample_test",
+      "actor_id": "agent_demo_abc123",
+      "timestamp": "2026-03-15T11:30:00Z",
+      "payload": {
+        "proof_type": "screenshot",
+        "proof_count": 1
+      },
+      "prev_hash": "ddf26a1c222fc783ac382c942a072f67795904393dd4bab1fe3105f7e62bdcbd",
+      "hash": "00e62e8ecea0fe81ff4fef5133c425779209dea4df3b8b174d77fd2ea4c2b172"
+    }
+  ],
+  "merkle_inclusion": null,
+  "bundle_hash": "d00559fc5cc24adea6a58bccc46ee993c01f267082ae6578e293a8f356f8b87c",
+  "actor_signature_sidecar": {
+    "sidecar_version": "0.0.1",
+    "canonicalization": "canonical_event_for_signing_v1",
+    "signature_alg": "Ed25519",
+    "signatures_by_event_hash": {
+      "ddf26a1c222fc783ac382c942a072f67795904393dd4bab1fe3105f7e62bdcbd": [
+        {
+          "actor_id": "test:acceptance_runtime_agent",
+          "key_id": "test_actor_v1",
+          "public_key_base64": "BeGzS6gvoPSqaWPZkdbAhO68s6dYKzsDlzhH8tWkxDo=",
+          "signature_base64": "m1z3dyK3YDfhdQL3z4MQUmpKoqtG0QPnY/RA3ffYCjgRBhf82CSX5EGQUSnRRZ91a4VNHpWbhN2CnymFS3FmCQ==",
+          "intent": "evaluated_inference",
+          "signed_at": "2026-06-18T17:00:00+00:00",
+          "signed_payload_canonical_keys": [
+            "event_id",
+            "event_type",
+            "deal_id",
+            "actor_id",
+            "timestamp",
+            "payload",
+            "prev_hash",
+            "key_id"
+          ]
+        }
+      ]
+    },
+    "sidecar_hash": "bb91a88a8de5dd9a97471fdddbb241501e5e4fc780e7c2b1194c563e7b90722d"
+  }
+}
