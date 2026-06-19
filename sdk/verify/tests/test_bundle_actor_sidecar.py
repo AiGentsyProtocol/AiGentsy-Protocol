@@ -350,3 +350,192 @@ def test_core_verifier_unaffected_by_sidecar_removal():
     del bundle["actor_signature_sidecar"]
     result = verify_bundle(bundle)
     assert result["verified"] is True
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Pass 82Q-D — Strong Level 1 actor-key binding tests.
+#
+# When `bundle.key_directory.keys_by_key_id[key_id]` is present:
+#   * the directory's public_key_base64 becomes canonical for Ed25519 verify
+#   * directory.actor_id must match the signed event.actor_id
+#   * sidecar entry.public_key_base64 must match directory's
+#   * key.status must be "active"
+#   * signed_at must fall within [issued_at, revoked_at)
+# When `key_directory` is absent:
+#   * binding_present = False; binding is NOT verified; but sidecar can
+#     still pass on its own self-supplied key (legacy Pass 82Q-A behavior).
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+SIDECAR_AND_DIRECTORY_BUNDLE = FIXTURES / "sample_bundle_with_sidecar_and_directory.json"
+
+
+def test_82qd_directory_absent_binding_not_present():
+    """Pass 82Q-A fixture (no key_directory) — binding informational only."""
+    bundle = _load(SIDECAR_BUNDLE)
+    r = verify_actor_signature_sidecar(bundle)
+    assert r["present"] is True
+    assert r["passed"] is True  # legacy 82Q-A behavior preserved
+    assert r["binding_present"] is False
+    assert r["binding_verified"] is False
+    assert r["binding_source"] == ""
+    assert r["binding_errors"] == []
+    assert r["bindings_checked"] == 0
+
+
+def test_82qd_directory_present_and_matching_binding_verified():
+    """Pass 82Q-D Strong Level 1 happy path — directory binding verified."""
+    bundle = _load(SIDECAR_AND_DIRECTORY_BUNDLE)
+    r = verify_actor_signature_sidecar(bundle)
+    assert r["present"] is True
+    assert r["passed"] is True
+    assert r["binding_present"] is True
+    assert r["binding_verified"] is True
+    assert r["binding_source"] == "bundle_key_directory"
+    assert r["binding_errors"] == []
+    assert r["bindings_checked"] >= 1
+
+
+def test_82qd_key_id_missing_from_directory_binding_fails():
+    """key_id supplied by sidecar that is NOT in directory → binding fail."""
+    bundle = _load(SIDECAR_AND_DIRECTORY_BUNDLE)
+    # Remove all keys from directory; binding will fail.
+    bundle["key_directory"]["keys_by_key_id"] = {}
+    r = verify_actor_signature_sidecar(bundle)
+    assert r["binding_present"] is True
+    assert r["binding_verified"] is False
+    assert any("not in bundle.key_directory" in e for e in r["binding_errors"])
+    assert r["passed"] is False  # Step 6 fails per operator policy
+
+
+def test_82qd_actor_id_mismatch_binding_fails():
+    """Directory says key belongs to a different actor than the event."""
+    bundle = _load(SIDECAR_AND_DIRECTORY_BUNDLE)
+    kid = list(bundle["key_directory"]["keys_by_key_id"].keys())[0]
+    bundle["key_directory"]["keys_by_key_id"][kid]["actor_id"] = "tampered:wrong_actor"
+    r = verify_actor_signature_sidecar(bundle)
+    assert r["binding_present"] is True
+    assert r["binding_verified"] is False
+    assert any("actor mismatch" in e for e in r["binding_errors"])
+    assert r["passed"] is False
+
+
+def test_82qd_public_key_mismatch_binding_fails():
+    """Directory's public_key differs from sidecar entry's."""
+    bundle = _load(SIDECAR_AND_DIRECTORY_BUNDLE)
+    kid = list(bundle["key_directory"]["keys_by_key_id"].keys())[0]
+    bundle["key_directory"]["keys_by_key_id"][kid]["public_key_base64"] = base64.b64encode(b"\x00" * 32).decode()
+    r = verify_actor_signature_sidecar(bundle)
+    assert r["binding_present"] is True
+    assert r["binding_verified"] is False
+    # Both a binding-level mismatch AND an InvalidSignature should appear
+    # (since the directory key is now the canonical verify key).
+    assert any("public_key mismatch" in e for e in r["binding_errors"])
+    assert r["passed"] is False
+
+
+def test_82qd_revoked_key_binding_fails():
+    """Directory says key is revoked — binding fails."""
+    bundle = _load(SIDECAR_AND_DIRECTORY_BUNDLE)
+    kid = list(bundle["key_directory"]["keys_by_key_id"].keys())[0]
+    bundle["key_directory"]["keys_by_key_id"][kid]["status"] = "revoked"
+    bundle["key_directory"]["keys_by_key_id"][kid]["revoked_at"] = "2026-06-18T16:00:00+00:00"
+    r = verify_actor_signature_sidecar(bundle)
+    assert r["binding_present"] is True
+    assert r["binding_verified"] is False
+    assert any("is not active" in e or "not valid at signed_at" in e for e in r["binding_errors"])
+    assert r["passed"] is False
+
+
+def test_82qd_signed_at_before_issued_at_binding_fails():
+    """signed_at falls BEFORE the key's issued_at — binding fails."""
+    bundle = _load(SIDECAR_AND_DIRECTORY_BUNDLE)
+    kid = list(bundle["key_directory"]["keys_by_key_id"].keys())[0]
+    # Push issued_at to the future so signed_at (2026-06-18T17:00:00) is too early.
+    bundle["key_directory"]["keys_by_key_id"][kid]["issued_at"] = "2027-01-01T00:00:00+00:00"
+    r = verify_actor_signature_sidecar(bundle)
+    assert r["binding_present"] is True
+    assert r["binding_verified"] is False
+    assert any("not valid at signed_at" in e for e in r["binding_errors"])
+    assert r["passed"] is False
+
+
+def test_82qd_signed_at_after_revoked_at_binding_fails():
+    """signed_at falls AFTER the key's revoked_at — binding fails."""
+    bundle = _load(SIDECAR_AND_DIRECTORY_BUNDLE)
+    kid = list(bundle["key_directory"]["keys_by_key_id"].keys())[0]
+    # signed_at in fixture is 2026-06-18T17:00:00; revoke before that.
+    bundle["key_directory"]["keys_by_key_id"][kid]["revoked_at"] = "2026-06-18T16:00:00+00:00"
+    # Leaving status="active" so we isolate the validity-window check.
+    r = verify_actor_signature_sidecar(bundle)
+    assert r["binding_present"] is True
+    assert r["binding_verified"] is False
+    assert any("not valid at signed_at" in e for e in r["binding_errors"])
+    assert r["passed"] is False
+
+
+def test_82qd_directory_public_key_is_canonical_verify_source():
+    """
+    When directory is present, the directory's public_key (not the sidecar
+    entry's) is the canonical key for Ed25519 verify. We prove this by:
+      1. Leave the directory key matching the original signature.
+      2. Replace the sidecar entry's public_key with a DIFFERENT valid key.
+      3. Binding fails on public_key mismatch (which is correct), AND
+      4. The Ed25519 verify uses the directory's key.
+    """
+    bundle = _load(SIDECAR_AND_DIRECTORY_BUNDLE)
+    sc = bundle["actor_signature_sidecar"]
+    # Get any first entry
+    for evh, entries in sc["signatures_by_event_hash"].items():
+        entries[0]["public_key_base64"] = base64.b64encode(b"\x11" * 32).decode()
+        break
+    # Recompute sidecar_hash so the hash gate doesn't short-circuit.
+    payload = {k: v for k, v in sc.items() if k != "sidecar_hash"}
+    canon = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode()
+    sc["sidecar_hash"] = hashlib.sha256(canon).hexdigest()
+
+    r = verify_actor_signature_sidecar(bundle)
+    # Public key mismatch detected at binding layer.
+    assert any("public_key mismatch" in e for e in r["binding_errors"])
+    # Ed25519 verify itself succeeded because the directory's key was used
+    # (the directory matches the original signing key). So no InvalidSignature
+    # in the top-level errors.
+    assert not any("InvalidSignature" in e for e in r["errors"])
+
+
+def test_82qd_tampered_key_directory_caught_but_bundle_hash_unchanged():
+    """
+    Tampering key_directory MUST cause binding failure but MUST NOT change
+    bundle_hash (key_directory is in EXCLUDED_FROM_HASH).
+    """
+    bundle = _load(SIDECAR_AND_DIRECTORY_BUNDLE)
+    base_hash = bundle["bundle_hash"]
+    kid = list(bundle["key_directory"]["keys_by_key_id"].keys())[0]
+    bundle["key_directory"]["keys_by_key_id"][kid]["actor_id"] = "tampered:malicious"
+
+    # Core 5-step verifier unaffected — bundle_hash recomputes to the same value.
+    core = verify_bundle(bundle)
+    assert core["steps"]["bundle_hash"]["passed"] is True
+    assert core["verified"] is True
+
+    # Strict sidecar binding catches the tamper.
+    r = verify_actor_signature_sidecar(bundle)
+    assert r["binding_present"] is True
+    assert r["binding_verified"] is False
+    assert any("actor mismatch" in e for e in r["binding_errors"])
+    # bundle_hash field unchanged.
+    assert bundle["bundle_hash"] == base_hash
+
+
+def test_82qd_legacy_82qa_fixture_still_passes_with_new_binding_fields():
+    """Pass 82Q-A fixture (no directory) verifier unchanged — binding fields default."""
+    bundle = _load(SIDECAR_BUNDLE)
+    r = verify_actor_signature_sidecar(bundle)
+    # Existing 82Q-A assertions still hold.
+    assert r["present"] is True
+    assert r["passed"] is True
+    assert r["sidecar_hash"]["passed"] is True
+    # New 82Q-D fields default to non-bound state.
+    assert r["binding_present"] is False
+    assert r["binding_verified"] is False
+    assert r["bindings_checked"] == 0

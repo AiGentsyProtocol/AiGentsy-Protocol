@@ -292,6 +292,57 @@ def _compute_sidecar_hash(sidecar: Dict[str, Any]) -> str:
     return hashlib.sha256(canonical).hexdigest()
 
 
+# Pass 82Q-D — Helpers for Strong Level 1 actor-key binding.
+#
+# The directory is keyed by `key_id` (matching the runtime-internal
+# verifier and the runtime `bundle_spec.py` Tier-2 Stage 4 path).
+# An entry must carry at minimum: actor_id, public_key_base64,
+# status, issued_at, revoked_at.
+
+def _iso_le(a: str, b: str) -> bool:
+    """ISO-8601 lexicographic <= (UTC, normalized) — same as runtime helper."""
+    return (a or "") <= (b or "")
+
+
+def _key_active_at(entry: Dict[str, Any], at_ts: str) -> bool:
+    """A key is valid at `at_ts` iff:
+        issued_at <= at_ts AND (revoked_at is None OR at_ts < revoked_at)
+    AND status == "active".
+    """
+    if entry.get("status", "") != "active":
+        return False
+    issued_at = entry.get("issued_at", "")
+    revoked_at = entry.get("revoked_at")
+    if not issued_at or not _iso_le(issued_at, at_ts or ""):
+        return False
+    if revoked_at:
+        if _iso_le(revoked_at, at_ts or ""):
+            return False
+    return True
+
+
+def _lookup_key_in_directory(
+    bundle: Dict[str, Any], key_id: str,
+) -> Optional[Dict[str, Any]]:
+    """Lookup key_id in bundle.key_directory.keys_by_key_id.
+
+    Returns the entry dict or None. Tolerant of absent / malformed
+    directory — returns None silently in all such cases.
+    """
+    if not isinstance(key_id, str) or not key_id:
+        return None
+    kd = bundle.get("key_directory")
+    if not isinstance(kd, dict):
+        return None
+    keys_by_key_id = kd.get("keys_by_key_id")
+    if not isinstance(keys_by_key_id, dict):
+        return None
+    entry = keys_by_key_id.get(key_id)
+    if not isinstance(entry, dict):
+        return None
+    return entry
+
+
 def verify_actor_signature_sidecar(
     bundle: Dict[str, Any],
 ) -> Dict[str, Any]:
@@ -334,6 +385,13 @@ def verify_actor_signature_sidecar(
             "events_signed": 0,
             "events_total": len(bundle.get("events", [])),
             "actor_ids": [],
+            # Pass 82Q-D — Strong Level 1 binding result. Absent sidecar
+            # implies no binding to check; legacy bundles remain valid.
+            "binding_present":   False,
+            "binding_verified":  False,
+            "binding_source":    "",
+            "binding_errors":    [],
+            "bindings_checked":  0,
         }
 
     errors: List[str] = []
@@ -375,6 +433,16 @@ def verify_actor_signature_sidecar(
     events_by_hash = {e.get("hash", ""): e for e in events}
     signatures_by_event_hash = sidecar.get("signatures_by_event_hash", {}) or {}
 
+    # Pass 82Q-D — Strong Level 1: determine whether a key_directory is
+    # attached to the bundle. When present, the directory becomes the
+    # canonical source for the verification public key, and each entry
+    # must satisfy actor/key binding + validity-window checks.
+    directory_present = isinstance(bundle.get("key_directory"), dict) and isinstance(
+        bundle.get("key_directory", {}).get("keys_by_key_id"), dict
+    )
+    binding_errors: List[str] = []
+    bindings_checked = 0
+
     checked = 0
     actor_ids = set()
     for event_hash, sig_entries in signatures_by_event_hash.items():
@@ -388,14 +456,72 @@ def verify_actor_signature_sidecar(
             key_id = entry.get("key_id", "")
             pub_b64 = entry.get("public_key_base64", "")
             sig_b64 = entry.get("signature_base64", "")
+            signed_at = entry.get("signed_at", "")
             if not (actor_id and key_id and pub_b64 and sig_b64):
                 errors.append(
                     f"signature {i} on {event_hash[:16]}...: missing required field"
                 )
                 continue
             actor_ids.add(actor_id)
+
+            # Pass 82Q-D — When key_directory is present, it is the binding
+            # source of truth. We lookup the entry, validate the binding,
+            # and then use the directory's public_key_base64 as the canonical
+            # key for the Ed25519 verify. When directory is absent, we fall
+            # back to the sidecar's self-supplied public_key_base64 (the
+            # Pass 82Q-A path) — sidecar.passed can still be True but
+            # binding_verified will be False.
+            canonical_pub_b64 = pub_b64  # default: sidecar entry's key
+            if directory_present:
+                bindings_checked += 1
+                dir_entry = _lookup_key_in_directory(bundle, key_id)
+                if dir_entry is None:
+                    binding_errors.append(
+                        f"signature {i} on {event_hash[:16]}... by {actor_id}: "
+                        f"key_id {key_id!r} not in bundle.key_directory"
+                    )
+                    # Fall back to sidecar-supplied key for the signature
+                    # verify so the failure is attributed to "binding", not
+                    # "signature". Sidecar `passed` reflects sig validity;
+                    # binding_verified reflects directory binding.
+                else:
+                    dir_actor_id = dir_entry.get("actor_id", "")
+                    dir_public_key = dir_entry.get("public_key_base64", "")
+                    dir_status = dir_entry.get("status", "")
+                    # Binding check 1: directory's actor_id must match the
+                    # SIGNED event's actor_id (not the sidecar metadata).
+                    event_actor_id = event.get("actor_id", "")
+                    if dir_actor_id and event_actor_id and dir_actor_id != event_actor_id:
+                        binding_errors.append(
+                            f"signature {i} on {event_hash[:16]}...: "
+                            f"actor mismatch — directory says {dir_actor_id!r}, "
+                            f"event says {event_actor_id!r}"
+                        )
+                    # Binding check 2: sidecar entry's public_key must
+                    # match the directory's public_key for this key_id.
+                    if dir_public_key and pub_b64 and dir_public_key != pub_b64:
+                        binding_errors.append(
+                            f"signature {i} on {event_hash[:16]}...: "
+                            f"public_key mismatch between sidecar and directory"
+                        )
+                    # Binding check 3: key must be active.
+                    if dir_status != "active":
+                        binding_errors.append(
+                            f"signature {i} on {event_hash[:16]}...: "
+                            f"key {key_id!r} status={dir_status!r} is not active"
+                        )
+                    # Binding check 4: key must have been valid at signed_at.
+                    if signed_at and not _key_active_at(dir_entry, signed_at):
+                        binding_errors.append(
+                            f"signature {i} on {event_hash[:16]}...: "
+                            f"key {key_id!r} not valid at signed_at={signed_at!r}"
+                        )
+                    # Canonical key for the Ed25519 verify is the directory's.
+                    if dir_public_key:
+                        canonical_pub_b64 = dir_public_key
+
             try:
-                pub_raw = base64.b64decode(pub_b64)
+                pub_raw = base64.b64decode(canonical_pub_b64)
                 sig_raw = base64.b64decode(sig_b64)
                 pubkey = Ed25519PublicKey.from_public_bytes(pub_raw)
                 canonical = _canonical_signed_payload(event, key_id)
@@ -412,6 +538,19 @@ def verify_actor_signature_sidecar(
                 )
 
     overall = (not errors) and sidecar_hash_ok and checked > 0
+    binding_verified = (
+        directory_present
+        and bindings_checked > 0
+        and not binding_errors
+    )
+
+    # Pass 82Q-D — Step 6 binding-fail policy (operator-locked):
+    #   * directory absent → binding_verified=False but does NOT fail
+    #     the overall sidecar verdict (legacy bundles + bundles emitted
+    #     before enrollment was wired stay green if sig is valid).
+    #   * directory present + binding errors → overall sidecar fails.
+    if directory_present and binding_errors:
+        overall = False
 
     return {
         "passed": overall,
@@ -426,4 +565,10 @@ def verify_actor_signature_sidecar(
         "events_signed": len(signatures_by_event_hash),
         "events_total": len(events),
         "actor_ids": sorted(actor_ids),
+        # Pass 82Q-D — Strong Level 1 binding result.
+        "binding_present":   directory_present,
+        "binding_verified":  binding_verified,
+        "binding_source":    "bundle_key_directory" if directory_present else "",
+        "binding_errors":    binding_errors,
+        "bindings_checked":  bindings_checked,
     }
