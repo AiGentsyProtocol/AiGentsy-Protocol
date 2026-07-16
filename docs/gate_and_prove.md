@@ -55,3 +55,13 @@ Whatever the decision, you get the `consequence_state`, a proof reference (`bund
 ## A note on verification honesty
 
 Some bundles are fully anchored, with all checks passing. Lightweight or pre-anchor bundles may show skipped Merkle / STH / cross-reference checks and a `pending_anchor` status. The SDK surfaces the verifier's **actual** level (`full` when anchored and all checks pass, otherwise `offline`) and lists exactly which checks were skipped — instead of printing a blanket pass. Always read `verification_level` and `checks_skipped` rather than assuming a clean result.
+
+## What verification proves (and what it doesn't)
+
+Offline verification proves the **integrity and provenance** of the exported ProofPack — bundle integrity, signing/provenance, event-chain consistency, and available anchoring checks. It does **not** prove real-world outcome quality, and it does not replace post-action reconciliation from the target system of record.
+
+Pre-action authorization proof and post-action reconciliation answer different questions. The gate records whether the action was **allowed to run** before it touched the system. Read-back from the system of record confirms **what happened** after execution.
+
+## Where the public source lives
+
+The public AiGentsy protocol, verifier, SDK, MCP package, examples, and this note live at <https://github.com/AiGentsyProtocol/AiGentsy-Protocol>. The hosted AME Runtime is the production service and is **not** required to verify an exported ProofPack — you can verify a bundle offline with the standalone `aigentsy-verify` package.
