@@ -10,6 +10,60 @@ At the center of the system is **ProofPack v2** — a portable, offline-verifiab
 
 ```bash
 pip install aigentsy
+pip install 'aigentsy[verify]'      # + offline verifier (aigentsy-verify)
+```
+
+## Gate and prove in ~10 lines
+
+Gate one agent action **and** get back a portable proof that verifies offline —
+in one line. `gate_and_prove` calls the public Acceptance Runtime, exports the
+signed ProofPack for the run, verifies it, and runs your action **only if** the
+gate allowed it and the mandatory checks passed. Anything else fails closed.
+
+```python
+from aigentsy import gate_and_prove
+
+@gate_and_prove(action="contractor_payout")
+def release_payment(donation_id):
+    return f"disbursed {donation_id}"
+
+r = release_payment("DON-4471", evidence={"credit_check_passed": True,
+                                          "nonprofit_verified": True, "within_cap": True})
+
+print(r.consequence_state)                       # "allowed" | "blocked" | "held"
+print(r.verification["verified"],                # True
+      r.verification["verification_level"],      # "full"  (or "offline" if not yet anchored)
+      r.verification["checks_skipped"],           # e.g. []  (or ["merkle_inclusion", ...] when pending)
+      r.verification["anchor_status"])            # "anchored" | "pending_anchor"
+print(r.action_executed, r.action_result)         # runs ONLY if allowed + mandatory-verified
+```
+
+The proof verifies offline, with zero trust in us:
+
+```bash
+aigentsy-verify bundle proof.json --fetch-key
+```
+
+Honesty: `gate_and_prove` surfaces the verifier's **own** fields. It never
+reports "5/5" or "fully verified" for a bundle whose Merkle/STH/cross-reference
+checks were skipped — those show as `verification_level="offline"`,
+`anchor_status="pending_anchor"`, and a populated `checks_skipped`.
+
+### Verifier version
+
+`aigentsy[verify]` installs **`aigentsy-verify` 1.5.0** (the current PyPI
+release), which is the behavior `gate_and_prove` depends on. The in-repo source
+mirror at `sdk/verify` is a **stale checkout** (its `pyproject.toml` still reads
+`1.2.1`) — always rely on the pip-installed `aigentsy-verify`, not the local
+tree, for verification.
+
+### LangChain (optional)
+
+```bash
+pip install 'aigentsy[langchain]'
+```
+```python
+from aigentsy import gate_langchain_tool   # same gate_and_prove core; graceful hint if extra missing
 ```
 
 ## CLI

@@ -199,6 +199,29 @@ class AiGentsyClient:
         """Full proof bundle for a deal."""
         return self._get(f"/proof/{deal_id}")
 
+    # ── Acceptance Runtime (public gate-and-prove endpoints; back gate_and_prove) ──
+    def acceptance_runtime_evaluate(self, *, prompt: str = "", raw_output: str = "",
+                                    policy: Dict = None, required_evidence: Dict = None,
+                                    consequence: Dict = None, risk_tier: str = "medium",
+                                    model_metadata: Dict = None) -> Dict:
+        """Evaluate an action against a policy + evidence checklist. Public, no key.
+        Returns {ok, run_id, deal_id, decision, consequence_state, reason, ...} and
+        emits the signed lifecycle. Conforms to POST /acceptance-runtime/evaluate."""
+        return self._post("/acceptance-runtime/evaluate", {
+            "prompt": prompt, "raw_output": raw_output, "policy": policy or {},
+            "required_evidence": required_evidence or {},
+            "consequence": consequence or {}, "risk_tier": risk_tier,
+            "model_metadata": model_metadata or {},
+        })
+
+    def export_run(self, run_id: str) -> Dict:
+        """Export a run's offline-verifiable ProofPack. GET /acceptance-runtime/runs/{id}/export."""
+        return self._get(f"/acceptance-runtime/runs/{run_id}/export")
+
+    def get_public_key(self) -> Dict:
+        """Published Merkle log public key (for offline STH verification)."""
+        return self._get("/protocol/merkle/public-key")
+
     def verify_proof_bundle(self, deal_id: str) -> Dict:
         """Cryptographic verification of deal proof bundle."""
         return self._get(f"/proof/{deal_id}/verify")

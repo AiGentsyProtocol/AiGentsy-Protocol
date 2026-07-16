@@ -37,8 +37,13 @@ dependencies = [
 aigentsy = "aigentsy.cli:main"
 
 [project.optional-dependencies]
-verify = ["aigentsy-verify>=1.0"]
+# Pin the offline verifier to the current PUBLIC PyPI release (1.5.0). Note: the
+# in-repo source mirror at sdk/verify is a stale checkout (its pyproject says
+# 1.2.1); `pip install aigentsy[verify]` fetches the published 1.5.0 wheel, which
+# is the behavior gate_and_prove depends on. See README "Verifier version" note.
+verify = ["aigentsy-verify>=1.5.0"]
 langgraph = ["aigentsy-langgraph>=0.1"]
+langchain = ["langchain-core>=0.1"]
 test = ["pytest>=7.0"]
 
 [project.urls]
