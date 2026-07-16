@@ -31,7 +31,8 @@ classifiers = [
 dependencies = [
     "mcp[cli]>=1.0",
     "httpx>=0.27",
-    "aigentsy>=1.10.0",
+    # aigentsy_gate reuses aigentsy.gate_and_prove, added in the canonical SDK 1.15.0.
+    "aigentsy>=1.15.0",
 ]
 
 [project.scripts]

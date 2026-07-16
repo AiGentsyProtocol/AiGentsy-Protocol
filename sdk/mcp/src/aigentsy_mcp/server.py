@@ -1450,6 +1450,74 @@ def protocol_agent_system_prompt() -> str:
     return _AGENT_SYSTEM_PROMPT_PATH.read_text(encoding="utf-8")
 
 
+# ── Gate-and-prove (Pass 15) ──
+
+
+@mcp.tool()
+def aigentsy_gate(
+    action: str,
+    evidence: str = "{}",
+    policy: str = "{}",
+    consequence: str = "{}",
+    risk_tier: str = "medium",
+    raw_output: str = "",
+) -> str:
+    """Gate an action against a policy AND return a portable ProofPack that
+    verifies offline — the one-call gate-and-prove atom.
+
+    **Use this when** an agent is about to take a consequential action (pay,
+    disburse, deploy, release, publish) and you want a policy decision PLUS a
+    signed, independently-verifiable record of that decision in one step. The
+    Acceptance Runtime evaluates your policy + evidence, a ProofPack is exported
+    for the run, and it is verified offline.
+
+    This tool does NOT execute your downstream action — it returns the decision
+    and the proof so the CALLER runs the action ONLY when
+    ``consequence_state == "allowed"``. Blocked/held return the signed record and
+    run nothing.
+
+    Reuses the AiGentsy SDK primitive ``aigentsy.gate_and_prove`` — no duplicate
+    gate/proof/verify logic. Honest verification: it never claims "5/5" or
+    "fully verified" for a bundle whose Merkle/STH/cross-reference checks were
+    skipped — those surface as ``verification_level="offline"``,
+    ``anchor_status="pending_anchor"``, and a populated ``checks_skipped``.
+
+    Args:
+        action: identifier for the gated action (e.g. "contractor_payout")
+        evidence: JSON evidence checklist, e.g. '{"credit_check_passed": true}'
+        policy: JSON policy contract, e.g. '{"policy_id": "donation_loan_v1"}'
+        consequence: JSON downstream consequence, e.g. '{"kind": "payment", "amount": 2500}'
+        risk_tier: "low" | "medium" | "high"
+        raw_output: optional model output text driving the decision
+    """
+    _require("action", action)
+    from aigentsy import gate_and_prove  # reuse the canonical SDK primitive (no duplicate logic)
+
+    ev = json.loads(evidence or "{}")
+    pol = json.loads(policy or "{}")
+    cons = json.loads(consequence or "{}")
+    base = os.getenv("AME_BASE", "https://aigentsy-ame-runtime.onrender.com")
+    r = gate_and_prove(
+        action, evidence=ev, run=None, base_url=base,
+        policy=pol or None, consequence=cons or None,
+        risk_tier=risk_tier or "medium", raw_output=raw_output,
+    )
+    return json.dumps({
+        "decision": r.decision,
+        "consequence_state": r.consequence_state,
+        "run_id": r.run_id,
+        "allowed": r.allowed,
+        "blocked": r.blocked,
+        "held": r.held,
+        "verification": r.verification,          # honest verifier fields, verbatim
+        "bundle_export_url": r.bundle_export_url,
+        "action_executed": r.action_executed,    # always False — this tool gates/proves only
+        "fail_closed": r.fail_closed,
+        "reason": r.reason,
+        "error": r.error,
+    }, default=str)
+
+
 # ── Entry Point ──
 
 
