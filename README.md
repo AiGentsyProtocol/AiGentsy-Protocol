@@ -29,6 +29,7 @@ Run the end-to-end demo against the production runtime:
 - `tests/conformance/` - portable conformance tests and settlement vectors
 - `data/` - CUDA-validated benchmark result JSONs and conformance vectors
 - `examples/hello_e2e.py` - single-command end-to-end settlement demo
+- [Gate and prove in one wrapper](docs/gate_and_prove.md) — wrap an action so AiGentsy evaluates the gate, exports the ProofPack, verifies the evidence honestly, and executes only if allowed.
 
 ## Results
 
