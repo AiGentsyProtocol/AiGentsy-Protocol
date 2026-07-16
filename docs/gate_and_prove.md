@@ -62,6 +62,10 @@ Offline verification proves the **integrity and provenance** of the exported Pro
 
 Pre-action authorization proof and post-action reconciliation answer different questions. The gate records whether the action was **allowed to run** before it touched the system. Read-back from the system of record confirms **what happened** after execution.
 
+## Outcome reconciliation (an event on the same trail)
+
+`OUTCOME_RECONCILED` is an additive event on the existing ProofPack trail — not a new layer and not a separate product. The gate records whether an action was **authorized before consequence**; outcome reconciliation records **what the system of record reported afterward**, qualified by the source and attestation strength of that read-back. Same trail, same ProofPack lineage, same settlement memory — no world-truth claim. A `matched` status is a statement about the supplied read-back evidence versus the approved intent (qualified by `readback_source_type`); it does not claim the external system is honest or that the world ended in the approved state.
+
 ## Where the public source lives
 
 The public AiGentsy protocol, verifier, SDK, MCP package, examples, and this note live at <https://github.com/AiGentsyProtocol/AiGentsy-Protocol>. The hosted AME Runtime is the production service and is **not** required to verify an exported ProofPack — you can verify a bundle offline with the standalone `aigentsy-verify` package.
