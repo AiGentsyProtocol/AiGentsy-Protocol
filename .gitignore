@@ -20,3 +20,6 @@ build/
 node_modules/
 .coverage
 htmlcov/
+
+# Claude Code local settings/logs (never commit)
+.claude/
