@@ -1,6 +1,6 @@
 # aigentsy-mcp
 
-MCP server for the AiGentsy Settlement Protocol. Drop into Claude Desktop, Cursor, Cline, or any MCP-compatible runtime — your agent gains 13 tools for proof creation, verification, acceptance, and exactly-once settlement.
+MCP server for the AiGentsy Settlement Protocol. Drop into Claude Desktop, Cursor, Cline, or any MCP-compatible runtime — your agent gains 15 tools for proof creation, verification, acceptance, and exactly-once settlement.
 
 ## Install
 
