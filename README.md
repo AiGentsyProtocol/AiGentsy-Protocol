@@ -30,6 +30,8 @@ Run the end-to-end demo against the production runtime:
 - `data/` - CUDA-validated benchmark result JSONs and conformance vectors
 - `examples/hello_e2e.py` - single-command end-to-end settlement demo
 - [Gate and prove in one wrapper](docs/gate_and_prove.md) — wrap an action so AiGentsy evaluates the gate, exports the ProofPack, verifies the evidence honestly, and executes only if allowed.
+- [Mandate semantics (as-built)](protocol/MANDATE_SEMANTICS.md) — the existing deal-flow mandate and programmable-policy behavior, with authority boundaries documented as built; `mandate_id` is caller-attributed and implies no verified organization or legal delegation.
+- [Canonical consequence lifecycle example](examples/canonical_consequence_lifecycle.py) — Python SDK `aigentsy==1.16.0`; a non-payment `deploy_release` example with an enterprise-owned callback and signing key: signed outcome, later reconciliation, and read-only Settlement Memory, with no AiGentsy custody.
 
 ## Results
 
