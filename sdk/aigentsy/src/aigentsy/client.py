@@ -71,13 +71,652 @@ class AiGentsyClient:
     # ── Registration & Identity ──
 
     def register(self, name: str, capabilities: List[str] = None, **kwargs) -> Dict:
-        """Register a new agent. Auto-stores the returned API key."""
+        """Register a new agent. Auto-stores the returned API key.
+
+        Tier 2 Stage 2: you can optionally pass `public_key_base64=...`
+        to enroll a signing public key in the same call (the protocol
+        will register the agent AND enroll the public key, returning
+        the resulting `key_id` in the `signing` field of the response).
+        The public key must come from `SigningKeypair.generate()` —
+        AiGentsy never sees the private half.
+        """
         data = self._post("/protocol/register", {
             "name": name, "capabilities": capabilities or [], **kwargs,
         })
         if data.get("api_key"):
             self._api_key = data["api_key"]
         return data
+
+    def generate_signing_keypair(self, print_notice: bool = True):
+        """Create a fresh Ed25519 keypair LOCALLY. NON-CUSTODIAL.
+
+        Returns a `SigningKeypair` object. The private key stays on
+        YOUR machine — this method does no network I/O. Save it with
+        `kp.save_to_file(...)` somewhere only you can read.
+
+        Stage 2 ships this helper for keypair generation + enrollment.
+        Stage 3+ will add event signing using the same private key.
+        """
+        from aigentsy.keypair import SigningKeypair
+        return SigningKeypair.generate(print_notice=print_notice)
+
+    def enroll_signing_key(
+        self,
+        actor_id: str,
+        public_key_base64: str,
+        actor_type: str = "agent",
+        key_class: str = "production",
+        metadata: Dict = None,
+    ) -> Dict:
+        """Enroll a PUBLIC signing key for an actor (non-custodial).
+
+        Sends ONLY the public key. The client-side guard checks the
+        payload one final time before transmission and refuses if any
+        forbidden private-key field is present — mirrors the server-side
+        FORBIDDEN_PRIVATE_KEY_FIELDS guard.
+
+        Auth: for actor_type="agent", the client's stored api_key must
+        authenticate as `actor_id` (the agent enrolling their own key).
+        """
+        from aigentsy.keypair import _assert_no_private_material
+        body = {
+            "actor_id": actor_id,
+            "actor_type": actor_type,
+            "public_key_base64": public_key_base64,
+            "key_class": key_class,
+        }
+        if metadata:
+            body["metadata"] = metadata
+        # Client-side belt-and-suspenders check before the wire.
+        _assert_no_private_material(body, "enrollment body")
+        return self._post("/actor/enroll-key", body, auth=True)
+
+    def register_with_signing_key(
+        self,
+        name: str,
+        capabilities: List[str] = None,
+        save_private_key_to: str = None,
+        print_notice: bool = True,
+        **kwargs,
+    ):
+        """Convenience: generate a keypair LOCALLY, register the agent,
+        and enroll the public key in one round-trip-then-one-enroll flow.
+
+        Returns (SigningKeypair, register_response). The private key is
+        returned to you (and optionally saved to `save_private_key_to`).
+        AiGentsy never sees the private half.
+
+        If `save_private_key_to` is given, the keypair is written to
+        that path with 0600 perms (refuses to overwrite).
+        """
+        kp = self.generate_signing_keypair(print_notice=print_notice)
+        # First register the agent (this returns the api_key + agent_id
+        # AND, since the body has public_key_base64, the server will
+        # enroll the key in the same call — see ergonomic enrollment
+        # at protocol/a2a_api.py).
+        result = self.register(
+            name=name,
+            capabilities=capabilities or [],
+            public_key_base64=kp.public_key_base64,
+            **kwargs,
+        )
+        # Save the PRIVATE key locally if requested.
+        if save_private_key_to:
+            kp.save_to_file(save_private_key_to)
+        return kp, result
+
+    # ── Tier 2 Stage 7-A: signed-event ingress (autonomous, transparent) ──
+
+    def record_signed_outcome(
+        self,
+        deal_id: str,
+        performer_id: str,
+        payer_id: str,
+        amount: float,
+        key_id: str,
+        keypair,  # SigningKeypair
+        tx_id: str = "",
+        graph_id: str = "",
+        stage_id: str = "",
+        intent: str = "authorized_consequence",
+        extra_payload: Optional[Dict[str, Any]] = None,
+    ) -> Dict:
+        """Record a SIGNED OUTCOME_RECORDED (Stage 7-C) end-to-end.
+
+        The PERFORMER (the agent whose work was the outcome) signs.
+        The verifier 1.4.0 binding check requires
+        `event.actor_id == key_directory[performer_key].actor_id`, so:
+
+          * ``actor_id = performer_id``        (the signer)
+          * ``counterparty_id = performer_id`` (UNCHANGED from legacy —
+            preserves AIGx earn hook + OCS positive trigger contracts;
+            both read `counterparty_id` and credit performer)
+          * ``payload.payer_id = payer_id``    (NEW Stage 7-C field —
+            the outcome receipt uses it to label `buyer_id` correctly:
+            ``buyer_id = payload.payer_id or actor_id``)
+
+        The intent defaults to ``authorized_consequence`` — OUTCOME_RECORDED
+        gates ANY downstream consequence (payment, release, deployment,
+        state change, access unlock, audit record, reputation update),
+        not only payment. Use ``produced_work`` only where the outcome
+        is specifically work-production-flavored.
+
+        Pre-conditions the caller is responsible for:
+          * ``performer_id`` is the registered agent whose key is enrolled.
+          * The client's ``api_key`` authenticates as ``performer_id``.
+          * ``keypair.private_key_base64`` matches the public key
+            registered under ``key_id``.
+
+        Returns the appended record (with ``actor_signature`` attached).
+        Raises on any fail-closed gate (bad signature / stale token /
+        actor-key mismatch / replay / expired token).
+        """
+        payload = {
+            "tx_id":     tx_id,
+            "graph_id":  graph_id,
+            "stage_id":  stage_id,
+            "payer_id":  payer_id,
+        }
+        if extra_payload:
+            for k, v in extra_payload.items():
+                if k not in payload:
+                    payload[k] = v
+        return self.send_signed_event(
+            deal_id=deal_id,
+            event_type="OUTCOME_RECORDED",
+            actor_id=performer_id,          # the SIGNER — re-semantic for verifier
+            key_id=key_id,
+            intent=intent,
+            keypair=keypair,
+            counterparty_id=performer_id,   # UNCHANGED — preserves AIGx + OCS
+            amount=amount,
+            payload=payload,
+            source="graph_settlement",
+        )
+
+    # Allowed vocabularies for OUTCOME_RECONCILED (self-contained; the SDK is a
+    # standalone package and does not import the runtime protocol module).
+    _RECONCILIATION_STATUSES = frozenset({
+        "matched", "mismatched", "inconclusive", "unavailable",
+    })
+    _READBACK_SOURCE_TYPES = frozenset({
+        "first_party", "third_party", "platform_attested",
+        "caller_attested", "signed_external", "unsigned_external",
+    })
+    _EVIDENCE_REDACTION_STATUSES = frozenset({
+        "hash_only", "summary_only", "redacted", "full_payload_opt_in",
+    })
+
+    def record_outcome_reconciled(
+        self,
+        deal_id: str,
+        reconciler_id: str,
+        key_id: str,
+        keypair,  # SigningKeypair
+        expected_outcome_hash: str,
+        observed_outcome_hash: str,
+        reconciliation_status: str,
+        readback_source: str,
+        readback_source_type: str,
+        evidence_hash: str,
+        evidence_redaction_status: str = "hash_only",
+        expected_outcome_summary: str = "",
+        observed_outcome_summary: str = "",
+        prior_decision_ref: str = "",
+        prior_action_ref: str = "",
+        external_reference_id: str = "",
+        readback_timestamp: str = "",
+        readback_actor: str = "",
+        readback_actor_role: str = "",
+        attestation_class: str = "",
+        comparison_method: str = "",
+        mismatch_reason: str = "",
+        evidence_uri: str = "",
+        notes: str = "",
+        extra_payload: Optional[Dict[str, Any]] = None,
+    ) -> Dict:
+        """Record a SIGNED ``OUTCOME_RECONCILED`` — post-action read-back.
+
+        Attaches a post-action read-back observation to the SAME authorization
+        trail (same ``deal_id``) as the acceptance decision. It records what was
+        expected, what was observed, whether the comparison matched, and the
+        SOURCE + ATTESTATION STRENGTH of the read-back.
+
+        Claim boundary (do not soften):
+
+            This records read-back evidence and binds it to the trail. It does
+            NOT prove the external world is true, does NOT guarantee execution
+            correctness, and does NOT make the read-back's source claim true.
+            A ``matched`` status is a statement about the supplied evidence vs.
+            the approved intent, qualified by ``readback_source_type``.
+
+        Hash-first: pass CONTENT HASHES (``expected_outcome_hash`` /
+        ``observed_outcome_hash`` / ``evidence_hash``), not raw payloads. The
+        default ``evidence_redaction_status="hash_only"`` — raw observed
+        payloads are never sent by default.
+
+        The ``reconciler`` (whoever/whatever performed the read-back) signs, so
+        ``actor_id = reconciler_id``. The signature attests *who recorded the
+        reconciliation*, not that the underlying source is honest. Reuses the
+        generic signed-event path (``send_signed_event``); adds no new endpoint.
+
+        Returns the appended record (with ``actor_signature`` attached).
+        Raises ``ValueError`` on an invalid controlled-vocabulary value.
+        """
+        if reconciliation_status not in self._RECONCILIATION_STATUSES:
+            raise ValueError(
+                f"invalid reconciliation_status {reconciliation_status!r}; "
+                f"allowed: {sorted(self._RECONCILIATION_STATUSES)}"
+            )
+        if readback_source_type not in self._READBACK_SOURCE_TYPES:
+            raise ValueError(
+                f"invalid readback_source_type {readback_source_type!r}; "
+                f"allowed: {sorted(self._READBACK_SOURCE_TYPES)}"
+            )
+        if evidence_redaction_status not in self._EVIDENCE_REDACTION_STATUSES:
+            raise ValueError(
+                f"invalid evidence_redaction_status {evidence_redaction_status!r}; "
+                f"allowed: {sorted(self._EVIDENCE_REDACTION_STATUSES)}"
+            )
+        if not (expected_outcome_hash and observed_outcome_hash and evidence_hash):
+            raise ValueError(
+                "expected_outcome_hash, observed_outcome_hash and evidence_hash "
+                "are required (pass content hashes, not raw payloads)"
+            )
+        if not readback_source:
+            raise ValueError("readback_source is required")
+
+        payload: Dict[str, Any] = {
+            "expected_outcome_hash": expected_outcome_hash,
+            "observed_outcome_hash": observed_outcome_hash,
+            "reconciliation_status": reconciliation_status,
+            "readback_source": readback_source,
+            "readback_source_type": readback_source_type,
+            "evidence_hash": evidence_hash,
+            "evidence_redaction_status": evidence_redaction_status,
+        }
+        _optional = {
+            "expected_outcome_summary": expected_outcome_summary,
+            "observed_outcome_summary": observed_outcome_summary,
+            "prior_decision_ref": prior_decision_ref,
+            "prior_action_ref": prior_action_ref,
+            "external_reference_id": external_reference_id,
+            "readback_timestamp": readback_timestamp,
+            "readback_actor": readback_actor,
+            "readback_actor_role": readback_actor_role,
+            "attestation_class": attestation_class,
+            "comparison_method": comparison_method,
+            "mismatch_reason": mismatch_reason,
+            "evidence_uri": evidence_uri,
+            "notes": notes,
+        }
+        for _k, _v in _optional.items():
+            if _v:
+                payload[_k] = _v
+        if extra_payload:
+            for _k, _v in extra_payload.items():
+                if _k not in payload:
+                    payload[_k] = _v
+
+        return self.send_signed_event(
+            deal_id=deal_id,
+            event_type="OUTCOME_RECONCILED",
+            actor_id=reconciler_id,          # the SIGNER = who performed read-back
+            key_id=key_id,
+            intent="post_action_reconciliation",
+            keypair=keypair,
+            counterparty_id=reconciler_id,
+            payload=payload,
+            source="outcome_reconciliation",
+            actor_role=readback_actor_role or "reconciler",
+        )
+
+    def reconcile_outcome(
+        self,
+        deal_id: str,
+        reconciliation_status: str,
+        expected_outcome_hash: str,
+        observed_outcome_hash: str,
+        evidence_hash: str,
+        prior_authorization_event_id: str,
+        readback_source: str = "",
+        expected_outcome_summary: str = "",
+        observed_outcome_summary: str = "",
+        prior_decision_ref: str = "",
+        prior_action_ref: str = "",
+        external_reference_id: str = "",
+        readback_timestamp: str = "",
+        readback_actor_role: str = "",
+        comparison_method: str = "",
+        mismatch_reason: str = "",
+        evidence_uri: str = "",
+    ) -> Dict:
+        """Thin wrapper for the SIMPLE (X-API-Key) OUTCOME_RECONCILED path.
+
+        Appends ONE authenticated, deal-party-authorized, server-validated
+        ``OUTCOME_RECONCILED`` observation to the SAME deal (``deal_id``) via the
+        existing ``POST /protocol/outcome-reconciliation`` route — no enrolled
+        signing key required. The server records the caller as
+        ``readback_source_type="caller_attested"`` (the honest weakest label);
+        use :meth:`record_outcome_reconciled` for the Ed25519-signed path.
+
+        Records an observation of what was expected vs observed AFTER a
+        consequence occurred. It does NOT rewrite the pre-execution ProofPack and
+        does NOT prove real-world truth — it attests who recorded the read-back.
+        References/hashes only; no raw output body is sent.
+        """
+        if reconciliation_status not in self._RECONCILIATION_STATUSES:
+            raise ValueError(
+                f"invalid reconciliation_status {reconciliation_status!r}; "
+                f"allowed: {sorted(self._RECONCILIATION_STATUSES)}"
+            )
+        body = {
+            "deal_id": deal_id,
+            "reconciliation_status": reconciliation_status,
+            "expected_outcome_hash": expected_outcome_hash,
+            "observed_outcome_hash": observed_outcome_hash,
+            "evidence_hash": evidence_hash,
+            "prior_authorization_event_id": prior_authorization_event_id,
+            "readback_source": readback_source,
+            "expected_outcome_summary": expected_outcome_summary,
+            "observed_outcome_summary": observed_outcome_summary,
+            "prior_decision_ref": prior_decision_ref,
+            "prior_action_ref": prior_action_ref,
+            "external_reference_id": external_reference_id,
+            "readback_timestamp": readback_timestamp,
+            "readback_actor_role": readback_actor_role,
+            "comparison_method": comparison_method,
+            "mismatch_reason": mismatch_reason,
+            "evidence_uri": evidence_uri,
+        }
+        return self._post("/protocol/outcome-reconciliation", body, auth=True)
+
+    def open_signed_dispute(
+        self,
+        deal_id: str,
+        claimant_id: str,
+        respondent_id: str,
+        reason: str,
+        key_id: str,
+        keypair,  # SigningKeypair
+    ) -> Dict:
+        """Open a SIGNED dispute (Stage 7-A) end-to-end, transparently.
+
+        The SDK runs the prepare → sign → submit round-trip on behalf
+        of the agent. The keypair's private half NEVER traverses the
+        wire — signing happens locally; only the resulting Ed25519
+        signature (88-char base64) is POSTed.
+
+        Pre-conditions the caller is responsible for:
+          * The agent's public key has already been enrolled (via
+            ``register_with_signing_key`` / ``enroll_signing_key``)
+            and ``key_id`` is the resulting active key for ``claimant_id``.
+          * The client's ``api_key`` authenticates as ``claimant_id``
+            (the claimant-auth fix from Stage 7-A enforces this).
+          * ``keypair.private_key_base64`` matches the public key
+            registered under ``key_id``.
+
+        Returns the appended record (with ``actor_signature`` attached).
+        Raises on any fail-closed gate (bad signature / stale token /
+        actor-key mismatch / replay).
+
+        NOTE: a separate ``DisputeArbitrationStore`` record is created
+        automatically by the server-side subscriber on append. The
+        returned event carries the dispute_id from the store on
+        subsequent reads via /protocol/disputes/{deal_id}.
+        """
+        return self.send_signed_event(
+            deal_id=deal_id,
+            event_type="DISPUTE_OPENED",
+            actor_id=claimant_id,
+            key_id=key_id,
+            intent="rejected_work",
+            keypair=keypair,
+            counterparty_id=respondent_id,
+            payload={"reason": reason},
+            source="dispute_arbitration",
+        )
+
+    def get_signing_capability(self, actor_id: str) -> Dict:
+        """Read the actor_registry's signing-capability profile for an
+        actor. Used by the Stage 7-B `decide_acceptance` router to pick
+        signed-via-ingress vs attribution-only-via-legacy-endpoint.
+
+        Returns the server's profile:
+            {
+              "mode":                     "client_side",
+              "public_key_registered":    bool,
+              "active_key_id":            str | None,
+              "active_key_class":         str | None,
+              "supports_actor_signatures": bool,
+              "actor_type":               str | None,
+            }
+
+        No network mutation; read-only.
+        """
+        return self._get(f"/actor/{actor_id}/signing-capability")
+
+    def decide_acceptance(
+        self,
+        acceptance_id: str,
+        deal_id: str,
+        reviewer_id: str,
+        decision: str,
+        downstream_action: str = "settle",
+        reason: str = "",
+        checks_passed: Optional[List[str]] = None,
+        checks_failed: Optional[List[str]] = None,
+        policy_snapshot: Optional[Dict[str, Any]] = None,
+        keypair=None,  # SigningKeypair | None
+        key_id: Optional[str] = None,
+    ) -> Dict:
+        """Tier 2 Stage 7-B — transparent ACCEPTED/REJECTED router.
+
+        OPTION 3 branching, decided client-side based on whether the
+        reviewer has an enrolled key:
+
+          1. Reviewer has NO enrolled key (or keypair/key_id not
+             supplied): routes to the legacy endpoint
+             ``POST /protocol/acceptance/{id}/{accept,reject}`` —
+             attribution-only event, settlement proceeds normally.
+             UNCHANGED from today's behavior.
+
+          2. Reviewer has an enrolled key AND keypair/key_id supplied:
+             routes through the Stage 7-A signed ingress
+             ``/protocol/event/prepare`` → local Ed25519 sign →
+             ``/protocol/event/submit``. On success, the server-side
+             subscriber updates the AcceptanceRecord; settlement
+             proceeds.
+
+          3. Reviewer has an enrolled key BUT signing fails (bad sig
+             / actor-key mismatch / replay / expired token): the
+             ingress returns 4xx, no event is appended, the
+             AcceptanceRecord stays "pending",
+             ``downstream_triggered`` stays False, settlement does
+             NOT proceed. The HTTP error is raised so the caller can
+             act on it.
+
+        The decision point is observable: the SDK queries
+        ``signing_capability`` once before deciding. A reviewer
+        WITHOUT a key is NEVER blocked — branch 1 has no signing step
+        to fail.
+
+        Args:
+          decision: "accept" or "reject"
+          keypair: optional SigningKeypair. If None, falls through to
+                   the legacy attribution-only endpoint regardless of
+                   the actor's registry state — the caller explicitly
+                   declined to sign.
+          key_id:  active enrolled key_id. Required when keypair is
+                   given.
+
+        Returns the appended/decided record (signed or
+        attribution-only). Raises on Option-3 block (signed path 4xx).
+        """
+        if decision not in ("accept", "reject"):
+            raise ValueError(
+                f"decision must be 'accept' or 'reject', got {decision!r}"
+            )
+
+        # Branch 1 (explicit decline): no keypair supplied → legacy path.
+        if keypair is None or key_id is None:
+            return self._decide_acceptance_attribution_only(
+                acceptance_id, decision, reason, checks_passed, checks_failed,
+            )
+
+        # Branch 2/3: signed via ingress. Server is the source of truth
+        # for whether this reviewer's key is currently active + bound.
+        # Pre-check via signing_capability; if no key registered, fall
+        # back to branch 1 transparently rather than failing.
+        try:
+            cap = self.get_signing_capability(reviewer_id)
+        except Exception:
+            cap = {"public_key_registered": False}
+        if not cap.get("public_key_registered"):
+            return self._decide_acceptance_attribution_only(
+                acceptance_id, decision, reason, checks_passed, checks_failed,
+            )
+
+        # Build the event_type-specific payload to mirror today's
+        # attribution-only payload (protocol/acceptance_gate.py:308-323).
+        if decision == "accept":
+            event_type = "ACCEPTED"
+            payload = {
+                "acceptance_id":     acceptance_id,
+                "downstream_action": downstream_action,
+                "checks_passed":     list(checks_passed or []),
+                "reason":            reason,
+                "policy_snapshot":   policy_snapshot or {},
+            }
+            intent = "accepted_work"
+        else:
+            event_type = "REJECTED"
+            payload = {
+                "acceptance_id":   acceptance_id,
+                "checks_failed":   list(checks_failed or []),
+                "reason":          reason,
+                "policy_snapshot": policy_snapshot or {},
+            }
+            intent = "rejected_work"
+
+        return self.send_signed_event(
+            deal_id=deal_id,
+            event_type=event_type,
+            actor_id=reviewer_id,
+            key_id=key_id,
+            intent=intent,
+            keypair=keypair,
+            payload=payload,
+            source="acceptance_gate",
+        )
+
+    def _decide_acceptance_attribution_only(
+        self, acceptance_id: str, decision: str,
+        reason: str, checks_passed, checks_failed,
+    ) -> Dict:
+        """Branch 1 — today's attribution-only endpoint. Unchanged."""
+        body = {
+            "decision":      decision,
+            "reason":        reason,
+            "checks_passed": list(checks_passed or []),
+            "checks_failed": list(checks_failed or []),
+        }
+        path = f"/protocol/acceptance/{acceptance_id}/" + (
+            "accept" if decision == "accept" else "reject"
+        )
+        return self._post(path, body, auth=True)
+
+    def send_signed_event(
+        self,
+        deal_id: str,
+        event_type: str,
+        actor_id: str,
+        key_id: str,
+        intent: str,
+        keypair,  # SigningKeypair
+        payload: Optional[Dict[str, Any]] = None,
+        counterparty_id: str = "",
+        amount: float = 0.0,
+        source: str = "",
+        actor_role: str = "",
+    ) -> Dict:
+        """Generic Stage 7-A signed-event round-trip.
+
+        Phase 1 ``/protocol/event/prepare`` → local Ed25519 sign of the
+        returned canonical bytes → Phase 2 ``/protocol/event/submit``.
+
+        The keypair's private key is read once into a transient
+        Ed25519PrivateKey object, used to sign, and dropped. It is NOT
+        sent over the wire; the request bodies are inspected by the
+        client-side FORBIDDEN_PRIVATE_KEY_FIELDS guard before
+        transmission.
+
+        Returns the appended record dict.
+        """
+        import base64
+        from aigentsy.keypair import _assert_no_private_material
+        try:
+            from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+                Ed25519PrivateKey,
+            )
+        except ImportError as e:
+            raise RuntimeError(
+                "send_signed_event requires the `cryptography` package "
+                "(pip install cryptography>=41.0)"
+            ) from e
+
+        # 1. Prepare
+        prepare_body = {
+            "deal_id":         deal_id,
+            "event_type":      event_type,
+            "actor_id":        actor_id,
+            "key_id":          key_id,
+            "intent":          intent,
+            "payload":         payload or {},
+            "counterparty_id": counterparty_id,
+            "amount":          amount,
+            "source":          source,
+            "actor_role":      actor_role,
+        }
+        # Client-side guard: NEVER let a private-key-shaped field
+        # cross the wire, even by accident. Mirrors the server's
+        # FORBIDDEN_PRIVATE_KEY_FIELDS set.
+        _assert_no_private_material(prepare_body, "prepare body")
+        prep = self._post("/protocol/event/prepare", prepare_body, auth=True)
+
+        token = prep["token"]
+        canonical_b64 = prep["canonical_bytes_b64"]
+        canonical_bytes = base64.b64decode(canonical_b64)
+
+        # 2. Sign locally — private key never leaves this scope
+        priv_raw = base64.b64decode(keypair.private_key_base64)
+        try:
+            priv = Ed25519PrivateKey.from_private_bytes(priv_raw)
+            sig = priv.sign(canonical_bytes)
+            sig_b64 = base64.b64encode(sig).decode("ascii")
+        finally:
+            # Scrub local references — true non-custodial discipline
+            try:
+                del priv
+            except NameError:
+                pass
+            priv_raw = None  # noqa: F841
+
+        # 3. Submit
+        submit_body = {
+            "token": token,
+            "actor_signature": {
+                "actor_id":  actor_id,
+                "key_id":    key_id,
+                "intent":    intent,
+                "signature": sig_b64,
+            },
+        }
+        # Belt-and-suspenders again — the signature is public; private
+        # material should not be anywhere in this body.
+        _assert_no_private_material(submit_body, "submit body")
+        result = self._post("/protocol/event/submit", submit_body, auth=True)
+        return result.get("event", result)
 
     def get_reputation(self, agent_id: str) -> Dict:
         """Get OCS score and tier for any agent."""
@@ -225,6 +864,26 @@ class AiGentsyClient:
     def verify_proof_bundle(self, deal_id: str) -> Dict:
         """Cryptographic verification of deal proof bundle."""
         return self._get(f"/proof/{deal_id}/verify")
+
+    def get_settlement_memory(self, limit: Optional[int] = None,
+                              cursor: Optional[str] = None) -> Dict:
+        """Query owner-scoped Settlement Memory — the read-only, query-time
+        projection over the EXISTING event trail across the authenticated
+        caller's deals (``GET /protocol/settlement-memory``, X-API-Key).
+
+        Surfaces the decision → consequence → outcome → reconciliation chain
+        (references and hashes only) for deals the caller owns. Owner scoping is
+        server-side (derived from the API key); records for other actors are
+        never disclosed. Pure read — no consequence side effect, no local store,
+        no cache. Returns the projection dict including the pagination cursor;
+        pass it back as ``cursor`` for the next page.
+        """
+        params: Dict[str, Any] = {}
+        if limit is not None:
+            params["limit"] = int(limit)
+        if cursor is not None:
+            params["cursor"] = cursor
+        return self._get("/protocol/settlement-memory", params=params, auth=True)
 
     def get_timeline(self, deal_id: str) -> Dict:
         """Full deal timeline with events + ledger."""

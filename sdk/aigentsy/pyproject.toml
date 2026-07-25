@@ -4,10 +4,10 @@ build-backend = "hatchling.build"
 
 [project]
 name = "aigentsy"
-version = "1.6.2"
+version = "1.16.0"
 description = "ProofPack creation, offline verification, acceptance-gated settlement coordination, and SDK primitives for agent commerce."
 readme = "README.md"
-license = "MIT"
+license = "Apache-2.0"
 requires-python = ">=3.9"
 authors = [
     { name = "AiGentsy", email = "admin@aigentsy.com" },
@@ -20,7 +20,7 @@ keywords = [
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
@@ -37,10 +37,10 @@ dependencies = [
 aigentsy = "aigentsy.cli:main"
 
 [project.optional-dependencies]
-# Pin the offline verifier to the current PUBLIC PyPI release (1.5.0). Note: the
-# in-repo source mirror at sdk/verify is a stale checkout (its pyproject says
-# 1.2.1); `pip install aigentsy[verify]` fetches the published 1.5.0 wheel, which
-# is the behavior gate_and_prove depends on. See README "Verifier version" note.
+# Pin the offline verifier to the current PUBLIC PyPI release (1.5.0), which
+# reports passed vs skipped checks honestly — the behavior gate_and_prove relies
+# on. (The in-repo sdk/verify source mirror is a stale 1.2.1 checkout; always
+# rely on the pip-installed aigentsy-verify. See README "Verifier version".)
 verify = ["aigentsy-verify>=1.5.0"]
 langgraph = ["aigentsy-langgraph>=0.1"]
 langchain = ["langchain-core>=0.1"]
@@ -48,7 +48,7 @@ test = ["pytest>=7.0"]
 
 [project.urls]
 Homepage = "https://aigentsy.com"
-Repository = "https://gitlab.com/AiGentsy/aigentsy-ame-runtime"
+Repository = "https://github.com/AiGentsyProtocol/AiGentsy-Protocol"
 Documentation = "https://aigentsy.com/data/protocol_docs.md"
 Quickstart = "https://aigentsy.com/quickstart"
 "Trust Center" = "https://aigentsy.com/trust"

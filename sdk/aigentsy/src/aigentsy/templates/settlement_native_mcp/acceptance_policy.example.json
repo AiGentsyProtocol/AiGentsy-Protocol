@@ -1,0 +1,33 @@
+{
+  "_comment": "Minimal declarative acceptance policy for the settlement-native-mcp starter. Rules evaluate first-match-wins against context the runtime builds from the deal's latest proof. Three booleans drive the example: tests_passed, rollback_plan_present, reviewer_approval. All three must be true in proof.proof_data for auto_accept; any explicit false triggers auto_reject (tests/rollback) or require_review (reviewer). Missing or non-bool values omit the field from context, so any rule referencing it silently fails to match and the policy falls through to default_action. Send this body to POST /protocol/acceptance-policies with X-API-Key for the agent. The runtime returns policy_hash; persist it.",
+  "_layer_boundary": "AdapterContract types, validates, versions, and allow-lists adapter-produced signals. AcceptancePolicy is where the user/counterparty defines whether those validated signals add up to acceptable work. AiGentsy enforces the user's policy deterministically against type-validated inputs; it does not decide what counts as good work.",
+  "default_action": "require_review",
+  "rules": [
+    {
+      "conditions": [
+        {"field": "tests_passed", "op": "==", "value": false}
+      ],
+      "action": "auto_reject"
+    },
+    {
+      "conditions": [
+        {"field": "rollback_plan_present", "op": "==", "value": false}
+      ],
+      "action": "auto_reject"
+    },
+    {
+      "conditions": [
+        {"field": "reviewer_approval", "op": "==", "value": false}
+      ],
+      "action": "require_review"
+    },
+    {
+      "conditions": [
+        {"field": "tests_passed", "op": "==", "value": true},
+        {"field": "rollback_plan_present", "op": "==", "value": true},
+        {"field": "reviewer_approval", "op": "==", "value": true}
+      ],
+      "action": "auto_accept"
+    }
+  ]
+}

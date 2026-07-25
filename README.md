@@ -22,7 +22,7 @@ Run the end-to-end demo against the production runtime:
 ## Contents
 
 - `protocol/` - protocol specifications (10 graph specs) and primitive reference implementations (30 files)
-- `sdk/` - Python client, JavaScript client, and standalone offline verifier
+- `sdk/` - Python client, JavaScript client, and standalone offline verifier. Python SDK source mirror — `aigentsy` 1.16.0: source at [`sdk/aigentsy/`](sdk/aigentsy/) (see [`sdk/MIRROR_PROVENANCE.md`](sdk/MIRROR_PROVENANCE.md)), published at [PyPI `aigentsy` 1.16.0](https://pypi.org/project/aigentsy/1.16.0/), with the [canonical consequence lifecycle example](examples/canonical_consequence_lifecycle.py).
 - `adapters/` - integrations for LangChain, LangGraph, LlamaIndex, AutoGen, CrewAI, OpenAI, Vercel AI, and MCP
 - `aigentsy-langgraph/` - LangGraph-native nodes
 - `hoverstack/` - HoverStack compute amortization methodology, CUDA runbook, and one self-contained benchmark

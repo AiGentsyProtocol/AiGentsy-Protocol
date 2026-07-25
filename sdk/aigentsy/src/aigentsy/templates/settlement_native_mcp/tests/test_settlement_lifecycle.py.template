@@ -1,0 +1,249 @@
+"""Lifecycle tests for the generated {{PROJECT_NAME}} starter.
+
+Runs with NO network and NO credentials. The starter's `classify_stage`
+function is a pure local classifier; these tests pin its behavior on
+canonical examples and assert the generated files honor the consent
+boundary.
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+import pytest
+
+# Make the generated agent.py importable
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from agent import classify_stage, load_system_prompt, SYSTEM_PROMPT_PATH  # noqa: E402
+
+
+HERE = Path(__file__).resolve().parent
+PROJECT_ROOT = HERE.parent
+
+
+# ----------------------------------------------------------------------------
+# A. Stage classifier — canonical lifecycle assertions
+# ----------------------------------------------------------------------------
+
+
+def test_draft_does_not_recommend_proofpack():
+    """Draft / WIP must NOT trigger a ProofPack — drafts are not handoff-ready."""
+    r = classify_stage("Still drafting the proposal; nothing delivered yet.")
+    assert r["stage"] == "draft"
+    assert r["applicable"] is False
+    assert r["next_tool"] is None
+
+
+def test_handoff_ready_recommends_proofpack():
+    """Handoff-ready work should recommend creating a ProofPack."""
+    r = classify_stage("Finished deliverable for client review; payment pending.")
+    assert r["stage"] == "handoff_ready"
+    assert r["applicable"] is True
+    assert r["next_tool"] == "aigentsy_proof_pack"
+
+
+def test_verified_not_accepted_does_not_recommend_settlement():
+    """Verification is not acceptance — verify path must NOT recommend settle."""
+    r = classify_stage("Buyer must verify the proof before paying.")
+    assert r["next_tool"] != "aigentsy_settle"
+    assert r["next_tool"] == "aigentsy_verify"
+
+
+def test_accepted_can_recommend_settlement():
+    """Accepted work can recommend settlement."""
+    r = classify_stage("Counterparty has accepted the work; ready for payout.")
+    assert r["stage"] == "accepted"
+    assert r["applicable"] is True
+    assert r["next_tool"] == "aigentsy_settle"
+
+
+def test_export_path():
+    """External-audit / offline-verification path routes to export, not settle."""
+    r = classify_stage("External auditor needs to verify the proof offline.")
+    assert r["next_tool"] == "aigentsy_export"
+
+
+# ----------------------------------------------------------------------------
+# B. No outreach / no broadcast in the generated project
+# ----------------------------------------------------------------------------
+
+
+FORBIDDEN_IMPORT_PATTERNS = (
+    # actual browser-automation modules
+    "from playwright",
+    "import playwright",
+    "from selenium",
+    "import selenium",
+    # actual outreach functions from the runtime's social_autoposting_engine
+    "post_to_twitter_direct",
+    "post_to_instagram_direct",
+    "post_to_linkedin_direct",
+    "send_sms_direct",
+    "social_autoposting_engine",
+    # generic message-send identifiers
+    "send_dm(",
+    "send_dm =",
+)
+
+
+@pytest.mark.parametrize("forbidden_pattern", FORBIDDEN_IMPORT_PATTERNS)
+def test_no_outreach_module_referenced_in_python_files(forbidden_pattern):
+    """No generated Python file (excluding this test file itself, which
+    legitimately enumerates the forbidden patterns as string literals)
+    may import or call an outreach module/function.
+
+    Scans .py files only — discussion of these concepts in .md/.json is
+    fine (the canonical prompt explicitly disclaims broadcast/outreach;
+    that disclaiming is itself one of the load-bearing properties).
+    """
+    self_file = Path(__file__).resolve()
+    py_files = [
+        f for f in PROJECT_ROOT.rglob("*.py")
+        if f.resolve() != self_file
+    ]
+    for f in py_files:
+        body = f.read_text(encoding="utf-8")
+        assert forbidden_pattern not in body, (
+            f"forbidden outreach pattern {forbidden_pattern!r} found in {f}"
+        )
+
+
+# ----------------------------------------------------------------------------
+# C. Canonical clauses are present in agent_system_prompt.md
+# ----------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "required_clause",
+    [
+        "Verification is not acceptance",
+        "Do not create ProofPacks for every draft",
+        "Do not contact unaffiliated agents",
+        "Settlement happens only after proof and acceptance",
+        "Do not broadcast",
+    ],
+)
+def test_required_clause_in_system_prompt(required_clause):
+    body = load_system_prompt()
+    assert required_clause in body, (
+        f"canonical clause missing from agent_system_prompt.md: {required_clause!r}"
+    )
+
+
+# ----------------------------------------------------------------------------
+# D. MCP config contains no real credentials
+# ----------------------------------------------------------------------------
+
+
+def test_mcp_config_has_no_real_credentials():
+    cfg = json.loads((PROJECT_ROOT / "mcp_config.example.json").read_text())
+    env = cfg["mcpServers"]["aigentsy"]["env"]
+    # The placeholder must be the literal placeholder, not a real key
+    assert env.get("AIGENTSY_API_KEY") == "your_api_key_here", (
+        "AIGENTSY_API_KEY must remain a placeholder, never a real credential"
+    )
+    # No accidental Twitter / Stripe / etc. credentials
+    for key in env:
+        assert not key.startswith("STRIPE_"), f"unexpected real-credential key: {key}"
+        assert not key.startswith("TWITTER_"), f"unexpected real-credential key: {key}"
+        assert not key.startswith("LINKEDIN_"), f"unexpected real-credential key: {key}"
+
+
+def test_mcp_config_uses_verified_invocation():
+    """The example MCP config must use the verified `python -m adapters.mcp_server`
+    invocation — the same one that ships in aigentsy-mcp-example/."""
+    cfg = json.loads((PROJECT_ROOT / "mcp_config.example.json").read_text())
+    server = cfg["mcpServers"]["aigentsy"]
+    assert server["command"] == "python"
+    assert server["args"] == ["-m", "adapters.mcp_server"]
+
+
+# ----------------------------------------------------------------------------
+# E. System prompt file is locatable and readable
+# ----------------------------------------------------------------------------
+
+
+def test_system_prompt_file_exists():
+    assert SYSTEM_PROMPT_PATH.is_file(), (
+        f"agent_system_prompt.md missing: {SYSTEM_PROMPT_PATH}"
+    )
+    body = SYSTEM_PROMPT_PATH.read_text(encoding="utf-8")
+    assert "Settlement-Native Agent System Prompt" in body
+
+
+# ----------------------------------------------------------------------------
+# F. Acceptance policy fixture — concrete declarative rules ship in starter
+# ----------------------------------------------------------------------------
+
+
+ACCEPTANCE_POLICY_FIXTURE = PROJECT_ROOT / "acceptance_policy.example.json"
+
+
+def test_acceptance_policy_fixture_exists():
+    """The starter must ship a concrete declarative-rules fixture (not
+    just prose). This is what makes 'the template includes a policy
+    fixture' true."""
+    assert ACCEPTANCE_POLICY_FIXTURE.is_file(), (
+        f"acceptance_policy.example.json missing: {ACCEPTANCE_POLICY_FIXTURE}"
+    )
+
+
+def test_acceptance_policy_fixture_parses_as_json():
+    body = ACCEPTANCE_POLICY_FIXTURE.read_text(encoding="utf-8")
+    spec = json.loads(body)
+    assert isinstance(spec, dict)
+    assert "rules" in spec and isinstance(spec["rules"], list)
+    assert spec.get("default_action") in {"auto_accept", "require_review", "auto_reject"}
+
+
+def test_acceptance_policy_fixture_uses_starter_fields():
+    """Every rule condition references a field from the canonical starter
+    triple — tests_passed, rollback_plan_present, reviewer_approval —
+    proving the fixture is wired to the runtime ALLOWED_FIELDS additions."""
+    spec = json.loads(ACCEPTANCE_POLICY_FIXTURE.read_text(encoding="utf-8"))
+    starter_fields = {"tests_passed", "rollback_plan_present", "reviewer_approval"}
+    seen_fields = set()
+    for rule in spec["rules"]:
+        for cond in rule.get("conditions", []):
+            field = cond.get("field")
+            assert field in starter_fields, (
+                f"fixture rule references non-starter field: {field!r}"
+            )
+            seen_fields.add(field)
+    # All three starter fields must appear at least once.
+    assert seen_fields == starter_fields, (
+        f"fixture must exercise all three starter fields, got {seen_fields}"
+    )
+
+
+def test_acceptance_policy_fixture_has_reject_path():
+    """At least one rule must declare auto_reject — the load-bearing
+    'verified but rejected' path."""
+    spec = json.loads(ACCEPTANCE_POLICY_FIXTURE.read_text(encoding="utf-8"))
+    actions = [r.get("action") for r in spec["rules"]]
+    assert "auto_reject" in actions, (
+        "fixture must include at least one auto_reject rule"
+    )
+
+
+def test_acceptance_policy_fixture_default_is_conservative():
+    """default_action must be require_review — never auto_accept by
+    default. Conservative posture: when no rule matches, a human looks."""
+    spec = json.loads(ACCEPTANCE_POLICY_FIXTURE.read_text(encoding="utf-8"))
+    assert spec.get("default_action") == "require_review", (
+        f"default_action must be require_review, got {spec.get('default_action')!r}"
+    )
+
+
+def test_acceptance_policy_fixture_uses_allowed_ops():
+    """Every condition uses only allow-listed operators."""
+    spec = json.loads(ACCEPTANCE_POLICY_FIXTURE.read_text(encoding="utf-8"))
+    allowed_ops = {">=", "<=", "==", "!=", ">", "<", "in"}
+    for rule in spec["rules"]:
+        for cond in rule.get("conditions", []):
+            assert cond.get("op") in allowed_ops, (
+                f"condition uses unsupported op: {cond.get('op')!r}"
+            )

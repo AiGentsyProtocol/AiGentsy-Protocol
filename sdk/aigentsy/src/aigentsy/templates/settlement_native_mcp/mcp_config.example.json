@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "aigentsy": {
+      "command": "python",
+      "args": ["-m", "adapters.mcp_server"],
+      "env": {
+        "AME_BASE": "https://aigentsy-ame-runtime.onrender.com",
+        "AIGENTSY_API_KEY": "your_api_key_here"
+      }
+    }
+  }
+}

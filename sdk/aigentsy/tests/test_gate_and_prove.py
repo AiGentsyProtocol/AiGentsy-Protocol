@@ -268,3 +268,129 @@ def test_verifier_version_pin_and_note():
     assert "aigentsy-verify>=1.5.0" in pyproj              # pins the public release, not >=1.0
     readme = (root / "README.md").read_text()
     assert "Verifier version" in readme and "1.5.0" in readme and "1.2.1" in readme
+
+
+# ── 14-20. NON-PAYOUT consequence: gate_and_prove guards ANY enterprise callback
+# Payment is one reference consequence, not the architecture. These prove a
+# deployment/release callback (no money/Stripe/currency) inherits the exact same
+# guard: it runs ONLY on accept+verify; blocked/held/verify-fail never run it;
+# the enterprise-owned in-memory state mutates only on the allowed branch.
+
+def _deploy_callback(state):
+    """An enterprise-owned deployment callback (in-memory; no network/subprocess)."""
+    def _run():
+        state["status"] = "released"
+        return {"released": True, "build": "app-build-42", "environment": "staging"}
+    return _run
+
+
+def test_non_payout_deploy_release_allowed_runs_once():
+    _install_verifier(FULL_VERIFY)
+    cl = FakeClient(evaluate=_ev("accepted", "allowed"))
+    state = {"status": "not_released"}
+    calls = {"n": 0}
+
+    def run():
+        calls["n"] += 1
+        return _deploy_callback(state)()
+
+    r = gate_and_prove("deploy_release", evidence={"build_tested": True}, run=run, client=cl)
+    assert r.allowed and r.action_executed is True and calls["n"] == 1
+    assert state["status"] == "released"
+    assert r.action_result["released"] is True
+    assert r.proof_bundle is not None and r.verification["verified"]
+
+
+def test_non_payout_blocked_never_runs():
+    _install_verifier(FULL_VERIFY)
+    cl = FakeClient(evaluate=_ev("rejected", "blocked"))
+    state = {"status": "not_released"}
+    r = gate_and_prove("deploy_release", evidence={"build_tested": False},
+                       run=_deploy_callback(state), client=cl)
+    assert r.blocked and r.action_executed is False
+    assert state["status"] == "not_released"          # downstream unchanged
+    assert r.proof_bundle is not None                 # signed rejection still recorded
+
+
+def test_non_payout_held_never_runs():
+    _install_verifier(FULL_VERIFY)
+    cl = FakeClient(evaluate=_ev("require_review", "held"))
+    state = {"status": "not_released"}
+    r = gate_and_prove("deploy_release", evidence={"partial": True},
+                       run=_deploy_callback(state), client=cl)
+    assert r.held and r.action_executed is False and state["status"] == "not_released"
+
+
+def test_non_payout_verification_failure_never_runs():
+    _install_verifier(BAD_VERIFY)                     # allowed but mandatory check fails
+    cl = FakeClient(evaluate=_ev("accepted", "allowed"))
+    state = {"status": "not_released"}
+    r = gate_and_prove("deploy_release", evidence={"build_tested": True},
+                       run=_deploy_callback(state), client=cl)
+    assert r.fail_closed and r.action_executed is False and state["status"] == "not_released"
+
+
+def test_non_payout_callback_result_not_in_pre_execution_bundle():
+    # The callback runs AFTER export; its result must not be inside the exported
+    # (pre-execution) ProofPack bundle.
+    _install_verifier(FULL_VERIFY)
+    cl = FakeClient(evaluate=_ev("accepted", "allowed"),
+                    export={"deal_id": "d", "bundle_hash": "abc", "events": []})
+    state = {"status": "not_released"}
+    r = gate_and_prove("deploy_release", evidence={"build_tested": True},
+                       run=_deploy_callback(state), client=cl)
+    assert r.action_executed is True
+    assert "released" not in repr(r.proof_bundle)     # result is post-verification, not in the bundle
+
+
+def test_non_payout_example_reuses_sdk_and_has_no_money_or_new_authority():
+    # The published example imports the SDK gate_and_prove and introduces no
+    # dispatcher/registry/ABC/consequence-identity and no payment dependency.
+    import ast
+    root = pathlib.Path(__file__).resolve().parents[1]
+    ex = root / "examples" / "non_payout_gate_and_prove.py"
+    src = ex.read_text()
+    tree = ast.parse(src)
+    imported = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            imported.add(node.module or "")
+            for a in node.names:
+                imported.add(a.name)
+        elif isinstance(node, ast.Import):
+            for a in node.names:
+                imported.add(a.name)
+    assert "gate_and_prove" in imported                       # reuses the SDK primitive
+    # AST identifiers only (imports + called names + attributes), so negating
+    # docstring mentions ("no stripe, no payout") do not trip the scan.
+    idents = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            idents.add(node.id.lower())
+        elif isinstance(node, ast.Attribute):
+            idents.add(node.attr.lower())
+        elif isinstance(node, ast.ImportFrom):
+            idents.add((node.module or "").lower())
+            for a in node.names:
+                idents.add(a.name.lower())
+        elif isinstance(node, ast.Import):
+            for a in node.names:
+                idents.add(a.name.lower())
+    for banned in ("stripe", "payout", "paymentintent", "currency", "subprocess",
+                   "requests", "httpx", "socket", "consequencedispatcher",
+                   "compute_consequence_identity"):
+        assert banned not in idents, f"example must not use {banned} in code"
+
+
+def test_non_payout_example_runs_offline_both_branches(capsys):
+    # The example is executable offline and demonstrates run/blocked branches.
+    import importlib.util
+    root = pathlib.Path(__file__).resolve().parents[1]
+    ex = root / "examples" / "non_payout_gate_and_prove.py"
+    spec = importlib.util.spec_from_file_location("non_payout_gate_example", ex)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    mod.main()
+    out = capsys.readouterr().out.lower()
+    assert "accepted + verified" in out and "rejected / blocked" in out
+    assert "callback executed   : true" in out and "callback executed   : false" in out

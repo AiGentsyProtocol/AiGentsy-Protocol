@@ -1,0 +1,22 @@
+{
+  "_comment": "AdapterContract v0 for the settlement-native-mcp starter (Pass 62). This declaration is what the runtime registers as `aigentsy.settlement_native_mcp.starter` v1.0.0. The validator (`starter_boolean_validator`) accepts ONLY real booleans for the three declared output_fields; non-bool / missing / unknown values are rejected and never enter policy context. When a proof is created with `adapter_id=\"aigentsy.settlement_native_mcp.starter\"`, an AdapterEvaluation is attached to proof.evidence.adapter_evaluation and rides into the signed bundle. Tampering with it breaks bundle_hash. See: protocol/adapter_contract.py.",
+  "_layer_boundary": "AdapterContract types, validates, versions, and allow-lists adapter-produced signals. AcceptancePolicy is where the user/counterparty defines whether those validated signals add up to acceptable work. AiGentsy enforces the user's policy deterministically against type-validated inputs; it does not decide what counts as good work.",
+  "adapter_contract_version": "1.0.0",
+  "adapter_id": "aigentsy.settlement_native_mcp.starter",
+  "adapter_version": "1.0.0",
+  "input_schema_version": "1.0.0",
+  "input_schema_hash": "d506bb4bd09bed3b41a5c6c0145f1f869d2f74011aee795a0672a43325d42174",
+  "output_fields": [
+    "tests_passed",
+    "rollback_plan_present",
+    "reviewer_approval"
+  ],
+  "allowed_policy_fields": [
+    "tests_passed",
+    "rollback_plan_present",
+    "reviewer_approval"
+  ],
+  "validator_name": "starter_boolean_validator",
+  "validator_version": "1.0.0",
+  "contract_hash": "b25b162884759e534f2c0041ec7b14924ba75fbb818bce2ebea5ce9b88b6c8a5"
+}
