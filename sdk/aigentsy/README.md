@@ -613,7 +613,7 @@ These fields are advisory enrichments. They do not replace the core acceptance/s
 
 ## Six live consequence-gate demos
 
-AiGentsy is the acceptance gate between autonomous work and real-world consequence. The runtime exposes six live test-mode paths where proof verifies, acceptance fails, and downstream consequence stays held. Each demo emits a signed `REJECTED` (or held) event carrying a `policy_snapshot` (matched rule, evaluated inputs, policy hash) and, where applicable, an embedded `adapter_evaluation`. `downstream_triggered=false` is returned on every held response, together with a consequence-class-specific safety marker.
+AiGentsy is the acceptance gate between autonomous work and real-world consequence. The runtime exposes six live test-mode paths where proof verifies, acceptance fails, and downstream consequence stays held. Each demo emits a signed `REJECTED` (or held) event carrying a `policy_snapshot` of safe policy provenance — `policy_hash`, `rule_index`, `evaluation_action`, `evaluation_reason` — and, where applicable, an embedded `adapter_evaluation`. Private rule bodies, their thresholds, and the evaluated context are **not** distributed in portable ProofPacks. ProofPacks exported before this change may still contain those earlier embedded fields; historical bundles are never rewritten or retroactively redacted. `downstream_triggered=false` is returned on every held response, together with a consequence-class-specific safety marker.
 
 | Demo | Endpoint | Safety marker | What it proves |
 |------|----------|---------------|----------------|
