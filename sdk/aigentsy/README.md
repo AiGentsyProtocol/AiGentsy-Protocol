@@ -177,11 +177,8 @@ checks were skipped — those show as `verification_level="offline"`,
 
 ### Verifier version
 
-`aigentsy[verify]` installs **`aigentsy-verify` 1.5.0** (the current PyPI
-release), whose passed/skipped-check reporting is what `gate_and_prove` depends
-on. The in-repo source mirror at `sdk/verify` is a **stale checkout** (its
-`pyproject.toml` still reads `1.2.1`) — always rely on the pip-installed
-`aigentsy-verify`, not the local tree, for verification.
+`aigentsy[verify]` installs **`aigentsy-verify` 1.5.0**, whose
+passed/skipped-check reporting is what `gate_and_prove` depends on.
 
 ### LangChain (optional)
 
@@ -225,21 +222,21 @@ This is the first reference adapter for the Settlement-Native Agent Core. Future
 
 ### `aigentsy adapter` — AdapterContract developer CLI (v1.11.0+)
 
-The `adapter` subcommand family lets builders work with the new AdapterContract artifact surface added across Passes 65–69A:
+The `adapter` subcommand family lets builders work with the AdapterContract artifact surface:
 
 ```bash
-# Lifecycle / versioning (Pass 67)
+# Lifecycle / versioning
 aigentsy adapter list                          # list registered contracts
 aigentsy adapter pin <adapter_id> <version>    # pin a contract version
 aigentsy adapter bump <path/to/contract.json>  # bump a contract version
 aigentsy adapter diff <a.json> <b.json>        # diff two contract versions
 
-# Authoring helpers (Pass 65)
+# Authoring helpers
 aigentsy adapter scaffold <path>               # scaffold a starter AdapterContract
 aigentsy adapter lint <path>                   # validate a contract (now surfaces
-                                               # lifecycle warnings, Pass 69A)
+                                               # lifecycle warnings)
 
-# Signed publication (Pass 68; reuses aigentsy_log_signer_v1)
+# Signed publication (reuses aigentsy_log_signer_v1)
 aigentsy adapter attest <path>                 # sign a manifest entry
 aigentsy adapter manifest verify <manifest>    # verify a signed manifest offline
 ```
@@ -297,7 +294,7 @@ Vault G1's agent-binding guard continues to gate every read of `/vault/records`.
 
 ### `aigentsy admin account` — Account Registry CLI (admin only) (v1.13.0+)
 
-Manage AccountRegistry rows that drive Principal resolution (Pass 79A) and the enterprise-scoped Vault read path (Pass 79B). Six subcommands, all `OPS_ADMIN_KEY` env-only.
+Manage AccountRegistry rows that drive Principal resolution and the enterprise-scoped Vault read path. Six subcommands, all `OPS_ADMIN_KEY` env-only.
 
 ```bash
 # Create or upsert an account
@@ -351,7 +348,7 @@ All endpoints behind this CLI are gated by `admin_token_dependency`; there is no
 
 ### `aigentsy admin account membership` — AccountMembership Admin CLI (admin only) (v1.14.0+)
 
-Manage role-bearing memberships on top of the Pass 79A AccountRegistry. A membership maps `(account_id, agent_id) → role` and drives Pass 79F's role-aware Principal resolution + the `view=auditor` opt-in on `/vault/records?scope=enterprise`. Three subcommands, all `OPS_ADMIN_KEY` env-only.
+Manage role-bearing memberships on top of the AccountRegistry. A membership maps `(account_id, agent_id) → role` and drives role-aware Principal resolution + the `view=auditor` opt-in on `/vault/records?scope=enterprise`. Three subcommands, all `OPS_ADMIN_KEY` env-only.
 
 **Role enum**: `owner | admin | operator | auditor | viewer` (trust ranking, highest authority first).
 **Status enum**: `active | suspended | disabled`.
@@ -375,7 +372,7 @@ aigentsy admin account membership status \
 
 All commands accept `--base-url` to override the default runtime URL.
 
-#### Backward compatibility (Pass 79A → 79F)
+#### Backward compatibility
 
 An agent matching `AccountRecord.owner_agent_id` continues to resolve to **implicit `owner` role** with no membership row required. Existing 79A accounts work byte-identically without any migration. When an explicit membership exists for an owner, it takes precedence (e.g. demoting an owner to `admin` via an explicit membership).
 
@@ -628,16 +625,16 @@ Create a client. Default base URL is `http://localhost:10000`.
 
 Responses from the intent exchange and KPI dashboard now include optional advisory fields from the intelligence stack:
 
-- **Intent publish/get**: `complexity` — MetaBridge complexity assessment (`requires_team`, `factors`, `skill_count`). Present only when intent has required_skills in requirements.
+- **Intent publish/get**: `complexity` — complexity assessment (`requires_team`, `factors`, `skill_count`). Present only when the intent declares required skills.
 - **Intent close**: `team_suggestion` — Suggested multi-agent team for complex intents (`members`, `roles`, `skill_coverage`, `revenue_splits`). Advisory only — does not affect winner selection.
 - **KPI overview**: `brain_stats` — Platform learning metrics (`metahive_total_patterns`, `ai_family_total_tasks`, `yield_memory_available`).
-- **Premium intelligence**: `brain_intelligence` — MetaHive pattern stats and AI routing recommendations per task category.
+- **Premium intelligence**: pattern statistics and routing recommendations per task category.
 
 These fields are advisory enrichments. They do not replace the core acceptance/settlement decision path.
 
 ## Six live consequence-gate demos
 
-AiGentsy is the acceptance gate between autonomous work and real-world consequence. The runtime exposes six live test-mode paths where proof verifies, acceptance fails, and downstream consequence stays held. Each demo emits a signed `REJECTED` (or held) event carrying a `policy_snapshot` of safe policy provenance — `policy_hash`, `rule_index`, `evaluation_action`, `evaluation_reason` — and, where applicable, an embedded `adapter_evaluation`. Private rule bodies, their thresholds, and the evaluated context are **not** distributed in portable ProofPacks. ProofPacks exported before this change may still contain those earlier embedded fields; historical bundles are never rewritten or retroactively redacted. `downstream_triggered=false` is returned on every held response, together with a consequence-class-specific safety marker.
+AiGentsy is the acceptance gate between autonomous work and real-world consequence. The runtime exposes six live test-mode paths: one generic verified-but-rejected scenario plus five consequence-class held demonstrations. In each, proof verifies, acceptance fails, and downstream consequence stays held. Each demo emits a signed `REJECTED` (or held) event carrying a `policy_snapshot` of **bounded public provenance** — `policy_hash`, `rule_index`, `evaluation_action`, `evaluation_reason` — and, where applicable, an embedded `adapter_evaluation`. Portable ProofPacks do **not** distribute private rule bodies, conditions or thresholds, evaluated inputs or private evaluation context, failed conditions, suggested rule bodies, or matched-rule internals. `downstream_triggered=false` is returned on every held response, together with a consequence-class-specific safety marker.
 
 | Demo | Endpoint | Safety marker | What it proves |
 |------|----------|---------------|----------------|
@@ -672,4 +669,4 @@ Wedge invariant: **mandate before work, evidence before acceptance, acceptance b
 
 ## License
 
-MIT
+Apache-2.0

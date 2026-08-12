@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "aigentsy"
-version = "1.17.1"
+version = "1.17.2"
 description = "SDK for AiGentsy - the acceptance gate between autonomous work and real-world consequence, with portable ProofPacks and offline verification."
 readme = "README.md"
 license = "Apache-2.0"
