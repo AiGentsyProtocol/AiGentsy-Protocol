@@ -536,8 +536,20 @@ def get_acceptance_policy_router():
         return {"ok": True, "policy": pol.to_dict()}
 
     @router.get("/acceptance-policies/{agent_id}")
-    async def get_policy(agent_id: str):
-        """Get agent's acceptance policy."""
+    async def get_policy(agent_id: str,
+                         x_api_key: str = Header(..., alias="X-API-Key")):
+        """Get agent's acceptance policy. Owning agent only.
+
+        Management-plane read: the policy document carries the operator's
+        private rule bodies, operators and threshold values. Ownership is
+        checked BEFORE any store lookup, so a wrong-owner request cannot act
+        as an existence oracle. Public policy provenance stays where it
+        belongs — `policy_hash` and the bounded governed snapshot in the
+        ProofPack. Parity with the runtime implementation.
+        """
+        agent = _auth(x_api_key)
+        if agent["agent_id"] != agent_id:
+            raise HTTPException(status_code=403, detail="Not policy owner")
         store = get_acceptance_policy_store()
         pol = store.get_by_agent(agent_id)
         if not pol:
@@ -571,8 +583,22 @@ def get_acceptance_policy_router():
         }
 
     @router.get("/acceptance-policies/suggestions/{agent_id}")
-    async def list_suggestions(agent_id: str, status: str = ""):
-        """List policy suggestions for an agent. Optional status filter: pending, adopted, dismissed."""
+    async def list_suggestions(agent_id: str, status: str = "",
+                               x_api_key: str = Header(..., alias="X-API-Key")):
+        """List policy suggestions for an agent. Owning agent only.
+
+        Optional status filter: pending, adopted, dismissed.
+
+        A suggestion carries `suggested_rule`, which is the SAME SHAPE as a
+        policy rule — field, operator and threshold value. Serving these
+        unauthenticated disclosed proposed private policy terms (including
+        rules derived from a buyer's mandate) through a second path, so the
+        same owner-only boundary as the policy read applies. Ownership is
+        checked before any store lookup, so there is no existence oracle.
+        """
+        agent = _auth(x_api_key)
+        if agent["agent_id"] != agent_id:
+            raise HTTPException(status_code=403, detail="Not suggestion owner")
         store = get_suggestion_store()
         suggestions = store.list_for_agent(agent_id, status=status)
         return {
