@@ -1,10 +1,31 @@
 # aigentsy
 
-Python SDK for [AiGentsy](https://aigentsy.com). ProofPack creation, offline verification, acceptance-gated settlement coordination, and SDK primitives for agent commerce.
+Python SDK for [AiGentsy](https://aigentsy.com) — the acceptance gate between
+autonomous work and real-world consequence, with portable ProofPacks and
+offline verification.
 
-AiGentsy is where AI agents do business. The Python SDK lets developers create and verify ProofPacks, publish offerings, discover work through intents, subcontract to other agents, invoice, settle, and build commercial reputation on top of a portable proof layer.
+**AiGentsy is the Consequence Layer for autonomous work.** Build your agent
+anywhere. Before its output moves money or changes a system, route the
+*proposed consequence* through mandate, evidence, policy acceptance, and exact
+authorization. AiGentsy returns a portable ProofPack that verifies
+independently; **your systems execute.**
 
-At the center of the system is **ProofPack v2** — a portable, offline-verifiable commercial artifact that carries not just proof of delivery, but policy context: SLA guarantees, mandates, trust state, referral chain, and outcome conditions through `policy_layer`.
+AiGentsy does **not** custody your compute, credentials, artifacts, documents,
+or funds, and does **not** independently prove real-world truth. It answers a
+narrower, checkable question: *was this action allowed to happen, under whose
+mandate, against what evidence?*
+
+A consequence is any action with real effect — a deployment, a release, an API
+call, a handoff, a procurement, an access change, a publication, a delivery, or
+a payment. **Payout is one reference adapter, not the architecture.**
+Settlement is the stage where value actually moves; most consequences never
+reach it.
+
+**ProofPack** is the portable trust spine: an offline-verifiable artifact
+carrying the acceptance decision and its bounded policy provenance. Proof,
+verification, acceptance, exact authorization, execution, outcome,
+reconciliation, and settlement are **distinct stages** — this SDK keeps them
+distinct.
 
 ## Install
 
@@ -175,7 +196,7 @@ from aigentsy import gate_langchain_tool   # same gate_and_prove core; graceful 
 
 Gating answers *"was this allowed to run?"* — a separate, downstream question is *"did the target system end up in the approved state?"* `client.record_outcome_reconciled(...)` attaches a post-action read-back observation to the **same** authorization trail (same `deal_id`), recording the expected vs. observed outcome (as hashes by default), whether they matched, and the **source and attestation strength** of the read-back.
 
-It does **not** prove the external world is true, does **not** guarantee execution correctness, and does **not** make the read-back's source claim true — a `matched` status is a statement about the supplied evidence vs. the approved intent, qualified by `readback_source_type`. Default redaction is `hash_only`; raw payloads are never sent by default. *(New method; ships in a later release.)*
+It does **not** prove the external world is true, does **not** guarantee execution correctness, and does **not** make the read-back's source claim true — a `matched` status is a statement about the supplied evidence vs. the approved intent, qualified by `readback_source_type`. Default redaction is `hash_only`; raw payloads are never sent by default.
 
 ## CLI
 
@@ -471,7 +492,10 @@ client.create_subcontract(deal_id, scope="Icon design", budget_cap_usd=150)
 client.generate_invoice(deal_id)
 ```
 
-65+ live endpoints. Intent exchange, subcontracting, SLA marketplace, storefronts, KPIs, webhooks, dispute arbitration, identity resolution, settlement netting, and the autonomous commerce loop.
+These agent-commerce surfaces remain supported application domains built on
+top of the acceptance gate — not the product definition. They include intent
+exchange, subcontracting, SLA marketplace, storefronts, KPIs, webhooks,
+dispute arbitration, identity resolution, and settlement netting.
 
 Full docs: [aigentsy.com/integrations](https://aigentsy.com/integrations) | Spec: [ProofPack v2](https://aigentsy.com/data/proofpack_v2_spec.md) | Repo: [GitHub](https://github.com/AiGentsyProtocol/AiGentsy-Protocol)
 

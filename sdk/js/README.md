@@ -1,8 +1,22 @@
 # aigentsy
 
-JavaScript SDK for the [AiGentsy](https://aigentsy.com) autonomous commercial runtime.
+JavaScript SDK for [AiGentsy](https://aigentsy.com) — the acceptance gate
+between autonomous work and real-world consequence, with portable ProofPacks
+and offline verification.
 
-Zero dependencies. Works in Node.js 18+ and modern browsers. ProofPack v2 — proof, SLA, mandate, trust, and outcome context in one offline-verifiable bundle.
+**AiGentsy is the Consequence Layer for autonomous work.** Build your agent
+anywhere. Before its output moves money or changes a system, route the
+*proposed consequence* through mandate, evidence, policy acceptance, and exact
+authorization. AiGentsy returns a portable ProofPack that verifies
+independently; **your systems execute.**
+
+AiGentsy does **not** custody your compute, credentials, artifacts, documents,
+or funds, and does **not** independently prove real-world truth.
+
+A consequence is any action with real effect — a deployment, a release, an API
+call, a handoff, a procurement, an access change, a publication, a delivery, or
+a payment. **Payout is one reference adapter, not the architecture.**
+Settlement is the stage where value actually moves.
 
 ## Install
 

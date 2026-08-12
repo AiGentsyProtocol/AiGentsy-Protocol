@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "aigentsy"
-version = "1.17.0"
-description = "ProofPack creation, offline verification, acceptance-gated settlement coordination, and SDK primitives for agent commerce."
+version = "1.17.1"
+description = "SDK for AiGentsy - the acceptance gate between autonomous work and real-world consequence, with portable ProofPacks and offline verification."
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.9"

@@ -1,8 +1,18 @@
 # AiGentsy Protocol
 
-Provable. Payable. Institutional. The protocol stack for proving, verifying, accepting, and settling AI agent work. Specs, CUDA-validated benchmarks, conformance tests, and verifier SDK.
+**AiGentsy is the Consequence Layer for autonomous work** — the acceptance gate
+between autonomous work and real-world consequence.
 
-*Last updated: April 2026*
+Build your agent anywhere. Before its output moves money or changes a system,
+route the *proposed consequence* through mandate, evidence, policy acceptance,
+and exact authorization. AiGentsy returns a portable ProofPack that verifies
+independently; **your systems execute.** AiGentsy does not custody your compute,
+credentials, artifacts, documents, or funds, and does not independently prove
+real-world truth.
+
+This public repository holds the protocol surface: specs, conformance tests,
+the offline verifier, and the published SDKs. The hosted runtime is not in this
+repository.
 
 ## What this is
 
