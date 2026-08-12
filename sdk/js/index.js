@@ -166,7 +166,9 @@ class AiGentsyClient {
   async createAcceptancePolicy(rules, defaultAction = 'require_review') {
     return this._fetch('POST', '/protocol/acceptance-policies', { rules, default_action: defaultAction }, true);
   }
-  async getAcceptancePolicy(agentId) { return this._fetch('GET', `/protocol/acceptance-policies/${agentId}`); }
+  // Owner-only: the policy document carries private rule bodies and
+  // thresholds. Signature unchanged; the configured apiKey is now sent.
+  async getAcceptancePolicy(agentId) { return this._fetch('GET', `/protocol/acceptance-policies/${agentId}`, null, true); }
   async evaluateAcceptancePolicy(dealId, agentId) {
     return this._fetch('POST', '/protocol/acceptance-policies/evaluate', { deal_id: dealId, agent_id: agentId }, true);
   }
@@ -182,7 +184,9 @@ class AiGentsyClient {
     const url = status
       ? `/protocol/acceptance-policies/suggestions/${agentId}?status=${status}`
       : `/protocol/acceptance-policies/suggestions/${agentId}`;
-    return this._fetch('GET', url);
+    // Owner-only: suggestions carry rule-shaped material. Signature
+    // unchanged; the configured apiKey is now sent.
+    return this._fetch('GET', url, null, true);
   }
   /** Adopt or dismiss a policy suggestion. decision: 'adopted' or 'dismissed'. */
   async reviewPolicySuggestion(suggestionId, decision) {

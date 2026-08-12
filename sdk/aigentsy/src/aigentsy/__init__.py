@@ -13,4 +13,4 @@ __all__ = [
     "GateResult",
     "gate_langchain_tool",
 ]
-__version__ = "1.16.0"
+__version__ = "1.17.0"

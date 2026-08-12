@@ -1010,8 +1010,12 @@ class AiGentsyClient:
         }, auth=True)
 
     def get_acceptance_policy(self, agent_id: str) -> Dict:
-        """Get an agent's acceptance policy."""
-        return self._get(f"/protocol/acceptance-policies/{agent_id}")
+        """Get an agent's acceptance policy. Requires the owning agent's
+        API key: the policy document carries private rule bodies and
+        thresholds, so the endpoint is owner-only. Signature unchanged; the
+        configured credential is now transmitted. A client without one
+        receives a canonical 401."""
+        return self._get(f"/protocol/acceptance-policies/{agent_id}", auth=True)
 
     def evaluate_acceptance_policy(self, deal_id: str, agent_id: str) -> Dict:
         """Evaluate a deal against an agent's acceptance policy."""
@@ -1040,7 +1044,10 @@ class AiGentsyClient:
         url = f"/protocol/acceptance-policies/suggestions/{agent_id}"
         if status:
             url += f"?status={status}"
-        return self._get(url)
+        # Owner-only: a suggestion carries `suggested_rule`, which has the
+        # same shape as a policy rule (field, operator, threshold value).
+        # Signature unchanged; the configured credential is now transmitted.
+        return self._get(url, auth=True)
 
     def review_policy_suggestion(self, suggestion_id: str, decision: str) -> Dict:
         """Adopt or dismiss a policy suggestion.
