@@ -16,7 +16,26 @@ repository.
 
 ## What this is
 
-AiGentsy is the protocol stack for proving, verifying, accepting, and settling real AI agent work. When agents do consequential work, something has to prove it happened, validate it under policy, and authorize the next step, whether that step is money moving or downstream state advancing. That is not optional. This repo holds the public surface of what it takes to do it correctly.
+When an agent proposes a consequential action, something has to decide whether it
+was allowed — before the action reaches the outside world. That is the acceptance
+gate, and it runs in a fixed order: **mandate before work, evidence before
+acceptance, acceptance before consequence, exact authorization before your systems
+execute.**
+
+The four public primitives are **Recall** (reuse of prior attested work), **Accept**
+(the policy decision), **Proof** (the portable ProofPack that carries the trail), and
+**Settlement** (recorded only when value actually moves). Outcome recording and later
+reconciliation are distinct steps on that same trail, and Settlement Memory is a
+read-only projection of it — not a separate ledger.
+
+Commerce is one application domain, not the definition. Payout is a single reference
+consequence adapter; the gate is equally valid when the consequence is a deploy, a
+document release, or a state change. AiGentsy is non-custodial throughout: your
+systems execute, and AiGentsy never holds your compute, credentials, artifacts,
+documents, or funds.
+
+This repository is the public protocol surface. The hosted runtime is a separate,
+private service and its source is not distributed here.
 
 ## Quick start
 
@@ -32,16 +51,16 @@ Run the end-to-end demo against the production runtime:
 ## Contents
 
 - `protocol/` - protocol specifications (10 graph specs) and primitive reference implementations (30 files)
-- `sdk/` - Python client, JavaScript client, and standalone offline verifier. Python SDK source mirror — `aigentsy` 1.16.0: source at [`sdk/aigentsy/`](sdk/aigentsy/) (see [`sdk/MIRROR_PROVENANCE.md`](sdk/MIRROR_PROVENANCE.md)), published at [PyPI `aigentsy` 1.16.0](https://pypi.org/project/aigentsy/1.16.0/), with the [canonical consequence lifecycle example](examples/canonical_consequence_lifecycle.py).
+- `sdk/` - Python client, JavaScript client, and standalone offline verifier. Python SDK source mirror — `aigentsy` 1.17.2: source at [`sdk/aigentsy/`](sdk/aigentsy/) (see [`sdk/MIRROR_PROVENANCE.md`](sdk/MIRROR_PROVENANCE.md)), published at [PyPI `aigentsy` 1.17.2](https://pypi.org/project/aigentsy/1.17.2/), with the [canonical consequence lifecycle example](examples/canonical_consequence_lifecycle.py).
 - `adapters/` - integrations for LangChain, LangGraph, LlamaIndex, AutoGen, CrewAI, OpenAI, Vercel AI, and MCP
 - `aigentsy-langgraph/` - LangGraph-native nodes
-- `hoverstack/` - HoverStack compute amortization methodology, CUDA runbook, and one self-contained benchmark
+- `hoverstack/` - Recall compute-amortization methodology, CUDA runbook, and one self-contained benchmark (directory name predates the public Recall name and is preserved)
 - `tests/conformance/` - portable conformance tests and settlement vectors
 - `data/` - CUDA-validated benchmark result JSONs and conformance vectors
 - `examples/hello_e2e.py` - single-command end-to-end settlement demo
 - [Gate and prove in one wrapper](docs/gate_and_prove.md) — wrap an action so AiGentsy evaluates the gate, exports the ProofPack, verifies the evidence honestly, and executes only if allowed.
 - [Mandate semantics (as-built)](protocol/MANDATE_SEMANTICS.md) — the existing deal-flow mandate and programmable-policy behavior, with authority boundaries documented as built; `mandate_id` is caller-attributed and implies no verified organization or legal delegation.
-- [Canonical consequence lifecycle example](examples/canonical_consequence_lifecycle.py) — Python SDK `aigentsy==1.16.0`; a non-payment `deploy_release` example with an enterprise-owned callback and signing key: signed outcome, later reconciliation, and read-only Settlement Memory, with no AiGentsy custody.
+- [Canonical consequence lifecycle example](examples/canonical_consequence_lifecycle.py) — Python SDK `aigentsy==1.17.2`; a non-payment `deploy_release` example with an enterprise-owned callback and signing key: signed outcome, later reconciliation, and read-only Settlement Memory, with no AiGentsy custody.
 - [Enterprise security and diligence](docs/security-diligence/00_EXECUTIVE_README.md) — public architecture, authority, non-custody, threat-model, control matrix, and evidence index consolidating source-backed evidence for the shipped Consequence Layer.
 
 ## Results
@@ -58,15 +77,15 @@ All headline claims are backed by JSON artifacts in `data/`.
 
 ## What's new in v1.7
 
-ProofPack Reuse, the publicly named version of Prior-Artifact Sufficiency, is now the benchmark-proven v1.7 mechanism. The GH200 multi-agent mixed_composition benchmark showed 77.8% wall-clock reduction at 100-agent scale (2,456 baseline full-compute requests reduced to 576, with 1,880 prior-artifact zero-compute decisions). Separate A100 Negative Compute exact-reuse benchmarks showed approximately 59% wall-clock reduction across CUDA tensor and Qwen2.5-7B LLM inference runs. Ablation evidence confirmed all measured gain came from this mechanism alone. These benchmarks are not parameter-identical and should be cited separately.
+ProofPack Reuse, the reuse mechanism inside Recall, is now the benchmark-proven v1.7 mechanism. The GH200 multi-agent mixed_composition benchmark showed 77.8% wall-clock reduction at 100-agent scale (2,456 baseline full-compute requests reduced to 576, with 1,880 prior-artifact zero-compute decisions). Separate A100 Negative Compute exact-reuse benchmarks showed approximately 59% wall-clock reduction across CUDA tensor and Qwen2.5-7B LLM inference runs. Ablation evidence confirmed all measured gain came from this mechanism alone. These benchmarks are not parameter-identical and should be cited separately.
 
 Other v1.7 mechanisms (EconomicGate, NegativeComputePolicy, WorkflowExecutor, Shape Memory Decay) are implemented and unit-tested but require different workload conditions for benchmark activation.
 
-AiGentsy uses Stripe Connect for money movement and freetsa.org for RFC 3161 timestamp anchoring. No blockchain, no fund custody, works with existing payment rails.
+Where a consequence does move value, the reference payout adapter routes it through Stripe Connect; RFC 3161 timestamp anchoring uses freetsa.org. No blockchain and no fund custody — AiGentsy records and gates, existing payment rails move the money.
 
 ## Integration
 
-Serious deployment partners integrate via one of the adapters in `adapters/` or via the Python client in `sdk/python/`. The adapters call the AiGentsy production runtime over HTTP and return cryptographic proof bundles that can be verified offline with the standalone SDK.
+Serious deployment partners integrate via one of the adapters in `adapters/` or via the Python client in `sdk/aigentsy/`. The adapters call the AiGentsy production runtime over HTTP and return cryptographic proof bundles that can be verified offline with the standalone SDK.
 
 The full benchmark runtime is in a private repo. Deployment partners who want to reproduce internal benchmarks on their own workloads can contact us directly to arrange access.
 

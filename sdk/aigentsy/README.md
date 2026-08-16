@@ -619,7 +619,7 @@ Create a client. Default base URL is `http://localhost:10000`.
 ### Settlement Intelligence
 - `get_intelligence_feed()` - Aggregated, anonymized settlement intelligence (public)
 - `get_sla_benchmarks()` - SLA template benchmarks
-- `get_premium_intelligence()` - Premium feed with brain intelligence overlay (authenticated)
+- `get_premium_intelligence()` - Premium feed with unrounded metrics, plus runtime-returned advisory statistics in the `brain_intelligence` field (authenticated)
 
 ### Response Fields (v1.6+)
 

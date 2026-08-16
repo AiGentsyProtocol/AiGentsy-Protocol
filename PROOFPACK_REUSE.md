@@ -4,7 +4,7 @@
 
 ProofPack Reuse is the benchmark-proven HoverStack feature that eliminates redundant inference across agents processing repeated or equivalent work. When an agent submits a request whose result has already been computed and attested, the system reuses the prior ProofPack-backed result with zero new compute. The reuse decision is governed, auditable, and bound into the governance artifact.
 
-The internal mechanism is called **Prior-Artifact Sufficiency**. It identifies identical input hashes across requests and returns the prior ProofPack-backed result without invoking the model. Every reuse decision carries a signed attestation that records what was reused, why, and from where.
+The mechanism is part of **Recall**, the public name for reuse of prior attested work. It identifies identical input hashes across requests and returns the prior ProofPack-backed result without invoking the model. Every reuse decision carries a signed attestation that records what was reused, why, and from where.
 
 ## What the Benchmark Proved
 

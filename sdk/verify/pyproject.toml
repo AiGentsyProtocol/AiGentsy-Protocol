@@ -37,7 +37,7 @@ test = ["pytest>=7.0"]
 
 [project.urls]
 Homepage = "https://aigentsy.com"
-Repository = "https://gitlab.com/AiGentsy/aigentsy-ame-runtime"
+Repository = "https://github.com/AiGentsyProtocol/AiGentsy-Protocol"
 Documentation = "https://aigentsy.com/data/proof_bundle_spec.md"
 "Public Key" = "https://aigentsy-ame-runtime.onrender.com/protocol/merkle/public-key"
 "Trust Center" = "https://aigentsy.com/trust"

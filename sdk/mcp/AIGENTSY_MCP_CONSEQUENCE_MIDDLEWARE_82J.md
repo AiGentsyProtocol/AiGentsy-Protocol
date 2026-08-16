@@ -266,7 +266,7 @@ tests/smoke_test.py::test_fastmcp_signatures_valid               PASSED
 
 ## 10. Runtime mirror not touched
 
-`/Users/wadepapas/aigentsy-ame-runtime/adapters/mcp_server.py` is the runtime-repo development mirror of the canonical SDK MCP server. Per the operator-locked scope decision, it was **not edited in 82J**.
+`adapters/mcp_server.py` in the hosted-runtime repository is the runtime-repo development mirror of the canonical SDK MCP server. Per the operator-locked scope decision, it was **not edited in 82J**.
 
 If/when the mirror needs to be re-synced with this pass, the diff is contained to the same surgical region (after `aigentsy_reject`, before the settlement-signal advisory tool). That sync is a separate, mechanical pass — out of scope for 82J.
 

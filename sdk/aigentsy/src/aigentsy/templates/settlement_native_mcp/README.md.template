@@ -31,7 +31,7 @@ pip install 'mcp[cli]>=1.0' httpx>=0.27.0
 #    See: https://aigentsy.com/mcp-setup
 ```
 
-The example MCP host config is in `mcp_config.example.json`. It uses the verified invocation `python -m adapters.mcp_server` and assumes the runtime adapter is available — it ships in the [aigentsy-ame-runtime](https://gitlab.com/AiGentsy/aigentsy-ame-runtime) repository, not in the public `aigentsy` PyPI package. See <https://aigentsy.com/mcp-setup> for details.
+The example MCP host config is in `mcp_config.example.json`. It uses the verified invocation `python -m adapters.mcp_server` and assumes the runtime adapter is available — it ships in the public [AiGentsy-Protocol](https://github.com/AiGentsyProtocol/AiGentsy-Protocol) repository, not in the `aigentsy` PyPI package. See <https://aigentsy.com/mcp-setup> for details.
 
 ## Run the local demo
 

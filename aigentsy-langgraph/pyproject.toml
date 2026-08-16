@@ -17,4 +17,4 @@ langgraph = ["langgraph>=0.0.20"]
 [project.urls]
 Homepage = "https://aigentsy.com"
 Documentation = "https://aigentsy.com/quickstart"
-Repository = "https://gitlab.com/AiGentsy/aigentsy-ame-runtime"
+Repository = "https://github.com/AiGentsyProtocol/AiGentsy-Protocol"
