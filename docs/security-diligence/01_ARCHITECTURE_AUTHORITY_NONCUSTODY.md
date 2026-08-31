@@ -34,7 +34,7 @@ mandate & actor context → proposed consequence → policy & Acceptance → exa
 ## Exact-authorization profile
 
 - **Tier-1** (acceptance-before-consequence) is **always enforced** on the canonical consequence path: a payout is denied with `settlement_requires_acceptance` unless a current accepted Acceptance exists.
-- **Tier-2** (exact consequence-identity binding — amount/recipient/currency/instruction) is wired and enabled per deployment via `CONSEQUENCE_EXACT_ENFORCE=enforce`, which requires an exact match and **fails closed**. It is a **deployment enforcement profile**, configurable per contracted workflow — not a limitation.
+- **Tier-2** (exact consequence-identity binding — amount/recipient/currency/instruction) is wired and enabled per deployment via `CONSEQUENCE_EXACT_ENFORCE=enforce`, which requires an exact match and **fails closed**. It is a **deployment enforcement profile**, configurable per contracted workflow. Enforcement coverage is workflow-specific: the currently deployed settlement endpoints require compatible deal/action-level authorization before persistence or dispatch, while exact payout-recipient, amount, share and term binding remains a recorded Tier-2/24E design item.
 
 ## Non-custody & data boundary
 
