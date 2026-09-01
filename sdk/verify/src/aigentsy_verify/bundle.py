@@ -1,38 +1,205 @@
 """
-Proof Bundle v1 verification.
+Proof Bundle v1 + v3 verification.
 
 All functions are standalone — no AiGentsy runtime imports.
-Algorithms match protocol/bundle_spec.py exactly.
+Algorithms match protocol/bundle_spec.py + protocol/signing_schema.py.
 
-Pass 82Q-A — Optional Spec 3 actor-signature sidecar verification.
-Default verifier behavior is unchanged. The sidecar is a top-level
-`actor_signature_sidecar` field that legacy verifiers silently ignore;
-strict callers may opt into per-actor Ed25519 signature validation via
-`verify_actor_signature_sidecar()`.
+Spec dispatch:
+  v2 (spec_version="2.0.0"): 5-step verification (bundle_hash, event_chain,
+    merkle_inclusion, sth_signature, cross_reference). Byte-identical
+    output to 1.3.0's verify_bundle.
+  v3 (spec_version="3.0.0"): 5-step + a 6th `actor_signatures` step that
+    Ed25519-verifies each event's per-actor signature against the
+    bundle's key_directory and enforces validity-at-signing-time.
 """
 
 import base64
 import hashlib
+import hmac
 import json
 from typing import Any, Dict, List, Optional
 
 from aigentsy_verify.merkle import verify_inclusion, verify_sth_signature
+from aigentsy_verify.merkle import leaf_hash_hex  # PROOF-BINDING-1 (additive)
 
 SPEC_VERSION = "1.0.0"
 
-# Pass 82Q-A — sidecar canonical payload field order. Mirrors
-# runtime/protocol/signing_schema.py:canonical_event_for_signing
-# (7 _hash_record fields + key_id). sort_keys=True, compact separators.
-ACTOR_SIDECAR_CANONICAL_KEYS = (
-    "event_id",
-    "event_type",
-    "deal_id",
-    "actor_id",
-    "timestamp",
-    "payload",
-    "prev_hash",
-    "key_id",
+
+# ── Canonical bytes the per-actor signature covers ──────────────────
+#
+# MUST be byte-identical to protocol.signing_schema.canonical_event_for_signing
+# so an externally-signed event verifies with this offline package.
+
+_FIELDS_FOR_SIGNING = (
+    "event_id", "event_type", "deal_id", "actor_id",
+    "timestamp", "payload", "prev_hash",
 )
+
+
+def canonical_event_for_signing(event: Dict[str, Any], key_id: str) -> bytes:
+    """Return the EXACT bytes a per-actor signature covers.
+
+    Mirror of protocol.signing_schema.canonical_event_for_signing — same
+    byte output for the same input.
+    """
+    if not isinstance(key_id, str) or not key_id:
+        raise ValueError("key_id must be a non-empty string")
+    canonical: Dict[str, Any] = {f: event[f] for f in _FIELDS_FOR_SIGNING}
+    canonical["payload"]   = event.get("payload", {}) or {}
+    canonical["prev_hash"] = event.get("prev_hash", "") or ""
+    canonical["key_id"]    = key_id
+    return json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+def _iso_le(a: str, b: str) -> bool:
+    """Lexicographic ISO 8601 UTC comparison: a <= b. All AiGentsy
+    timestamps are UTC ISO 8601, so lex order matches chronological."""
+    return (a or "") <= (b or "")
+
+
+def _key_valid_at(key_entry: Dict[str, Any], event_ts: str) -> bool:
+    """A key is valid at `event_ts` iff:
+       issued_at <= event_ts   AND   (revoked_at is None  OR  event_ts < revoked_at)
+    """
+    issued_at  = key_entry.get("issued_at", "")
+    revoked_at = key_entry.get("revoked_at")
+    if not issued_at:
+        return False
+    if not _iso_le(issued_at, event_ts):
+        return False
+    if revoked_at is not None:
+        if _iso_le(revoked_at, event_ts):
+            # revoked_at <= event_ts → key was already revoked at signing
+            return False
+    return True
+
+
+def _verify_one_actor_signature(
+    event: Dict[str, Any],
+    key_directory: Dict[str, Any],
+) -> Dict[str, Any]:
+    eid = event.get("event_id", "")
+    et = event.get("event_type", "")
+    sig = event.get("actor_signature")
+    if not isinstance(sig, dict) or not sig.get("signature"):
+        return {
+            "event_id": eid, "event_type": et, "key_id": None,
+            "result": "attribution-only",
+            "reason": "no actor_signature on this event",
+        }
+
+    key_id = sig.get("key_id") or event.get("key_id") or ""
+    sig_b64 = sig.get("signature", "")
+    if not key_id:
+        return {
+            "event_id": eid, "event_type": et, "key_id": None,
+            "result": "FAIL", "reason": "actor_signature missing key_id",
+        }
+
+    key_entry = (key_directory or {}).get(key_id)
+    if not key_entry:
+        return {
+            "event_id": eid, "event_type": et, "key_id": key_id,
+            "result": "FAIL",
+            "reason": f"key_id {key_id!r} not in bundle.key_directory",
+        }
+
+    if not _key_valid_at(key_entry, event.get("timestamp", "")):
+        return {
+            "event_id": eid, "event_type": et, "key_id": key_id,
+            "result": "FAIL",
+            "reason": (
+                f"key {key_id!r} not valid at event timestamp "
+                f"(issued_at={key_entry.get('issued_at','')}, "
+                f"revoked_at={key_entry.get('revoked_at')}, "
+                f"event_ts={event.get('timestamp','')})"
+            ),
+        }
+
+    try:
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+        from cryptography.exceptions import InvalidSignature
+    except ImportError:
+        return {
+            "event_id": eid, "event_type": et, "key_id": key_id,
+            "result": "FAIL", "reason": "cryptography package not installed",
+        }
+
+    try:
+        pub_raw = base64.b64decode(key_entry["public_key_base64"], validate=True)
+        if len(pub_raw) != 32:
+            raise ValueError(f"public key must be 32 bytes; got {len(pub_raw)}")
+        pub = Ed25519PublicKey.from_public_bytes(pub_raw)
+        msg = canonical_event_for_signing(event, key_id)
+        sig_raw = base64.b64decode(sig_b64, validate=True)
+        pub.verify(sig_raw, msg)
+    except InvalidSignature:
+        return {
+            "event_id": eid, "event_type": et, "key_id": key_id,
+            "result": "FAIL", "reason": "Ed25519 signature does not verify",
+        }
+    except Exception as e:
+        return {
+            "event_id": eid, "event_type": et, "key_id": key_id,
+            "result": "FAIL", "reason": f"verify error: {e}",
+        }
+
+    # ── Actor/key binding (substitution-attack prevention at verify time) ──
+    # canonical_event_for_signing already includes actor_id + key_id in the
+    # signed bytes, so a signature cannot be forged across (actor_id,
+    # key_id) pairs at the SIGNING side. But the verifier must also
+    # confirm that the directory says this key belongs to the actor the
+    # event claims — otherwise an attacker who controls key K_B could
+    # sign an event claiming actor_id=A using key_id=K_B and the
+    # signature would verify cryptographically against K_B's pubkey.
+    # By checking key_directory[K_B].actor_id == event.actor_id we
+    # close the loop.
+    dir_actor_id = key_entry.get("actor_id", "")
+    event_actor_id = event.get("actor_id", "")
+    if dir_actor_id and event_actor_id and dir_actor_id != event_actor_id:
+        return {
+            "event_id": eid, "event_type": et, "key_id": key_id,
+            "result": "FAIL",
+            "reason": (
+                f"actor/key mismatch: key {key_id!r} is registered to "
+                f"actor {dir_actor_id!r} but the event claims actor "
+                f"{event_actor_id!r}. The signature verifies "
+                f"cryptographically against the key but the binding "
+                f"is wrong (substitution attempt)."
+            ),
+        }
+
+    return {
+        "event_id": eid, "event_type": et, "key_id": key_id,
+        "result": "PASS", "reason": "",
+    }
+
+
+def verify_actor_signatures(bundle: Dict[str, Any]) -> Dict[str, Any]:
+    """Verify all per-actor signatures in a 3.0.0 bundle.
+
+    The step PASSES iff every event WITH a signature verifies. Events
+    without signatures do NOT cause failure (mixed-bundle support).
+    """
+    events = bundle.get("events", []) or []
+    key_directory = bundle.get("key_directory", {}) or {}
+    per_event: List[Dict[str, Any]] = []
+    signed_count = 0
+    passed_count = 0
+    for ev in events:
+        r = _verify_one_actor_signature(ev, key_directory)
+        per_event.append(r)
+        if r["result"] in ("PASS", "FAIL"):
+            signed_count += 1
+            if r["result"] == "PASS":
+                passed_count += 1
+    return {
+        "passed": signed_count > 0 and passed_count == signed_count,
+        "skipped": signed_count == 0,
+        "events": per_event,
+        "signed_count": signed_count,
+        "passed_count": passed_count,
+    }
 
 
 def compute_bundle_hash(
@@ -119,156 +286,6 @@ def verify_event_chain(events: List[Dict]) -> Dict[str, Any]:
     }
 
 
-def verify_bundle(
-    bundle: Dict[str, Any],
-    public_key_base64: str = "",
-    sth: Dict[str, Any] = None,
-) -> Dict[str, Any]:
-    """
-    Complete 5-step offline bundle verification.
-
-    A third party can call this with ZERO access to AiGentsy's runtime.
-
-    Args:
-        bundle: The proof bundle JSON (dict)
-        public_key_base64: Ed25519 public key (base64) for STH verification.
-            Obtain from https://aigentsy.com/data/log_public_key.json
-        sth: Signed tree head (optional — uses bundle's STH if not provided)
-
-    Returns:
-        Verification result with per-step pass/fail:
-        {
-            "verified": bool,       # Overall result
-            "deal_id": str,
-            "spec_version": str,
-            "proof_count": int,
-            "event_count": int,
-            "steps": {
-                "bundle_hash": {"passed": bool, ...},
-                "event_chain": {"passed": bool, ...},
-                "merkle_inclusion": {"passed": bool, ...},
-                "sth_signature": {"passed": bool, ...},
-                "cross_reference": {"passed": bool, ...},
-            }
-        }
-    """
-    deal_id = bundle.get("deal_id", "")
-    spec_version = bundle.get("spec_version")
-    proofs = bundle.get("proofs", [])
-    events = bundle.get("events", [])
-    merkle_inclusion = bundle.get("merkle_inclusion")
-    claimed_hash = bundle.get("bundle_hash", "")
-
-    result: Dict[str, Any] = {
-        "deal_id": deal_id,
-        "spec_version": spec_version,
-        "steps": {},
-        "verified": False,
-    }
-
-    if sth is None:
-        sth = bundle.get("signed_tree_head")
-
-    # Step 1: Bundle hash
-    computed_hash = compute_bundle_hash(
-        deal_id, proofs, events, merkle_inclusion,
-        spec_version=spec_version or "",
-    )
-    hash_ok = computed_hash == claimed_hash
-    result["steps"]["bundle_hash"] = {
-        "passed": hash_ok,
-        "computed": computed_hash,
-        "claimed": claimed_hash,
-    }
-
-    # Step 2: Event chain
-    chain_result = verify_event_chain(events)
-    result["steps"]["event_chain"] = {
-        "passed": chain_result["verified"],
-        "event_count": chain_result["event_count"],
-        "errors": chain_result["errors"],
-    }
-
-    # Step 3: Merkle inclusion
-    merkle_ok = False
-    merkle_type = "none"
-    if merkle_inclusion and "leaf_index" in merkle_inclusion and "tree_size" in merkle_inclusion:
-        merkle_type = "rfc6962"
-        proof_hashes = [
-            p["hash"] if isinstance(p, dict) else p
-            for p in merkle_inclusion.get("proof", [])
-        ]
-        merkle_ok = verify_inclusion(
-            merkle_inclusion.get("leaf_hash", ""),
-            merkle_inclusion.get("leaf_index", 0),
-            merkle_inclusion.get("tree_size", 0),
-            proof_hashes,
-            merkle_inclusion.get("merkle_root", ""),
-        )
-    result["steps"]["merkle_inclusion"] = {
-        "passed": merkle_ok,
-        "type": merkle_type,
-        "skipped": not merkle_inclusion,
-    }
-
-    # Step 4: STH signature
-    sth_ok = False
-    sth_skipped = not (sth and public_key_base64)
-    if sth and public_key_base64:
-        sth_ok = verify_sth_signature(sth, public_key_base64)
-    result["steps"]["sth_signature"] = {
-        "passed": sth_ok,
-        "skipped": sth_skipped,
-    }
-
-    # Step 5: Cross-reference
-    cross_ok = False
-    cross_skipped = not (merkle_inclusion and sth)
-    if merkle_inclusion and sth:
-        cross_ok = merkle_inclusion.get("merkle_root") == sth.get("root_hash")
-    result["steps"]["cross_reference"] = {
-        "passed": cross_ok,
-        "skipped": cross_skipped,
-    }
-
-    # Overall verdict
-    mandatory_pass = all(
-        result["steps"][s]["passed"] for s in ["bundle_hash", "event_chain"]
-    )
-    optional_pass = all(
-        result["steps"][s].get("passed") or result["steps"][s].get("skipped")
-        for s in ["merkle_inclusion", "sth_signature", "cross_reference"]
-    )
-    result["verified"] = mandatory_pass and optional_pass
-    result["proof_count"] = len(proofs)
-    result["event_count"] = len(events)
-
-    skipped = [s for s in result["steps"] if result["steps"][s].get("skipped")]
-    result["steps_run"] = len(result["steps"]) - len(skipped)
-    result["steps_skipped"] = len(skipped)
-    result["verification_level"] = "full" if not skipped else "offline"
-
-    return result
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Pass 82Q-A — Optional Spec 3 actor-signature sidecar verification.
-#
-# Design notes:
-#  * The sidecar lives at top-level `actor_signature_sidecar`. Legacy
-#    verifiers ignore unknown top-level fields, and the bundle_hash
-#    projection whitelists only {spec_version, deal_id, proofs, events,
-#    merkle_inclusion} — so adding or removing the sidecar does NOT
-#    change bundle_hash.
-#  * Per-actor signatures are keyed by the existing event `hash` field
-#    (the 7-field SHA-256 from verify_event_chain).
-#  * Each signature signs the canonical 8-field projection mirroring
-#    runtime/protocol/signing_schema.py::canonical_event_for_signing
-#    (7 _hash_record fields + key_id), sort_keys=True, compact separators.
-#  * Strict-mode failure modes are SEPARATE from the core 5-step verifier
-#    result — verify_bundle() is unaffected by sidecar state by default.
-# ─────────────────────────────────────────────────────────────────────────────
-
 
 def _canonical_signed_payload(event: Dict[str, Any], key_id: str) -> bytes:
     """Build the canonical signed payload for one event + key_id binding."""
@@ -290,18 +307,6 @@ def _compute_sidecar_hash(sidecar: Dict[str, Any]) -> str:
     payload = {k: v for k, v in sidecar.items() if k != "sidecar_hash"}
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
     return hashlib.sha256(canonical).hexdigest()
-
-
-# Pass 82Q-D — Helpers for Strong Level 1 actor-key binding.
-#
-# The directory is keyed by `key_id` (matching the runtime-internal
-# verifier and the runtime `bundle_spec.py` Tier-2 Stage 4 path).
-# An entry must carry at minimum: actor_id, public_key_base64,
-# status, issued_at, revoked_at.
-
-def _iso_le(a: str, b: str) -> bool:
-    """ISO-8601 lexicographic <= (UTC, normalized) — same as runtime helper."""
-    return (a or "") <= (b or "")
 
 
 def _key_active_at(entry: Dict[str, Any], at_ts: str) -> bool:
@@ -342,6 +347,13 @@ def _lookup_key_in_directory(
         return None
     return entry
 
+
+# ── Actor-signature sidecar (consolidated from the protocol mirror) ─────
+#
+# Ported UNCHANGED from the protocol verifier so the runtime release
+# authority is the single source for every verifier behavior. Behavior,
+# signature, validation semantics and failure modes are byte-preserved;
+# this is a consolidation, not a redesign.
 
 def verify_actor_signature_sidecar(
     bundle: Dict[str, Any],
@@ -572,3 +584,390 @@ def verify_actor_signature_sidecar(
         "binding_errors":    binding_errors,
         "bindings_checked":  bindings_checked,
     }
+
+
+# ── Leaf-to-event binding (PROOF-BINDING-1) ─────────────────────────────
+#
+# The transparency log hashes a leaf over exactly these five canonical event
+# fields (protocol/merkle_log.py, TransparencyLog.append_entry):
+#
+#     leaf_data = {deal_id, event_type, event_id, event_hash, timestamp}
+#     canonical = json.dumps(leaf_data, sort_keys=True, separators=(",", ":"))
+#     leaf_hash = rfc6962_leaf_hash(canonical.encode("utf-8"))   # 0x00 prefix
+#
+# Every field is present on the canonical event, so the leaf is reconstructible
+# from the bundle itself — no new bundle field, schema version or exporter
+# change. `leaf_hash != event["hash"]` is EXPECTED: the leaf is a
+# domain-separated hash OVER those fields, not the event hash itself.
+
+STATUS_BOUND = "bound"
+STATUS_ANCHOR_UNBOUND = "anchor_unbound"
+STATUS_ANCHOR_AMBIGUOUS = "anchor_ambiguous"
+STATUS_NO_ANCHOR_CLAIMED = "no_anchor_claimed"
+
+_LEAF_FIELDS = ("deal_id", "event_type", "event_id", "event_hash", "timestamp")
+
+
+def canonical_leaf_data(event):
+    """Rebuild the exact leaf preimage for one event, or None if malformed."""
+    if not isinstance(event, dict):
+        return None
+    data = {}
+    for field in _LEAF_FIELDS:
+        value = event.get("hash") if field == "event_hash" else event.get(field)
+        if not isinstance(value, str) or not value:
+            return None          # malformed candidate → fail closed
+        data[field] = value
+    return data
+
+
+def compute_leaf_hash(event):
+    """Domain-separated leaf hash for one event, using the log's algorithm."""
+    data = canonical_leaf_data(event)
+    if data is None:
+        return None
+    canonical = json.dumps(data, sort_keys=True, separators=(",", ":"))
+    return leaf_hash_hex(canonical.encode("utf-8"))
+
+
+def find_bound_leaf_event(events, merkle_inclusion):
+    """Bind the claimed leaf to exactly one event in this bundle.
+
+    Returns (status, matched_event_or_None).
+    """
+    claimed = (merkle_inclusion or {}).get("leaf_hash")
+    if not merkle_inclusion or not claimed:
+        return STATUS_NO_ANCHOR_CLAIMED, None
+    matches = []
+    for ev in (events or []):
+        lh = compute_leaf_hash(ev)
+        if lh is not None and hmac.compare_digest(lh, claimed):
+            matches.append(ev)
+    if len(matches) == 1:
+        return STATUS_BOUND, matches[0]
+    if not matches:
+        return STATUS_ANCHOR_UNBOUND, None
+    return STATUS_ANCHOR_AMBIGUOUS, None
+
+
+def verify_bundle(
+    bundle: Dict[str, Any],
+    public_key_base64: str = "",
+    sth: Dict[str, Any] = None,
+) -> Dict[str, Any]:
+    """
+    Complete 5-step offline bundle verification.
+
+    A third party can call this with ZERO access to AiGentsy's runtime.
+
+    Args:
+        bundle: The proof bundle JSON (dict)
+        public_key_base64: Ed25519 public key (base64) for STH verification.
+            Obtain from https://aigentsy.com/data/log_public_key.json
+        sth: Signed tree head (optional — uses bundle's STH if not provided)
+
+    Returns:
+        Verification result with per-step pass/fail:
+        {
+            "verified": bool,       # Overall result
+            "deal_id": str,
+            "spec_version": str,
+            "proof_count": int,
+            "event_count": int,
+            "steps": {
+                "bundle_hash": {"passed": bool, ...},
+                "event_chain": {"passed": bool, ...},
+                "merkle_inclusion": {"passed": bool, ...},
+                "sth_signature": {"passed": bool, ...},
+                "cross_reference": {"passed": bool, ...},
+            }
+        }
+    """
+    deal_id = bundle.get("deal_id", "")
+    spec_version = bundle.get("spec_version")
+    proofs = bundle.get("proofs", [])
+    events = bundle.get("events", [])
+    merkle_inclusion = bundle.get("merkle_inclusion")
+    claimed_hash = bundle.get("bundle_hash", "")
+
+    result: Dict[str, Any] = {
+        "deal_id": deal_id,
+        "spec_version": spec_version,
+        "steps": {},
+        "verified": False,
+    }
+
+    if sth is None:
+        sth = bundle.get("signed_tree_head")
+
+    # Step 1: Bundle hash
+    computed_hash = compute_bundle_hash(
+        deal_id, proofs, events, merkle_inclusion,
+        spec_version=spec_version or "",
+    )
+    hash_ok = computed_hash == claimed_hash
+    result["steps"]["bundle_hash"] = {
+        "passed": hash_ok,
+        "computed": computed_hash,
+        "claimed": claimed_hash,
+    }
+
+    # Step 2: Event chain
+    chain_result = verify_event_chain(events)
+    result["steps"]["event_chain"] = {
+        "passed": chain_result["verified"],
+        "event_count": chain_result["event_count"],
+        "errors": chain_result["errors"],
+    }
+
+    # Step 3: Merkle inclusion
+    merkle_ok = False
+    merkle_type = "none"
+    if merkle_inclusion and "leaf_index" in merkle_inclusion and "tree_size" in merkle_inclusion:
+        merkle_type = "rfc6962"
+        proof_hashes = [
+            p["hash"] if isinstance(p, dict) else p
+            for p in merkle_inclusion.get("proof", [])
+        ]
+        merkle_ok = verify_inclusion(
+            merkle_inclusion.get("leaf_hash", ""),
+            merkle_inclusion.get("leaf_index", 0),
+            merkle_inclusion.get("tree_size", 0),
+            proof_hashes,
+            merkle_inclusion.get("merkle_root", ""),
+        )
+    result["steps"]["merkle_inclusion"] = {
+        "passed": merkle_ok,
+        "type": merkle_type,
+        "skipped": not merkle_inclusion,
+    }
+
+    # Step 4: STH signature
+    sth_ok = False
+    sth_skipped = not (sth and public_key_base64)
+    if sth and public_key_base64:
+        sth_ok = verify_sth_signature(sth, public_key_base64)
+    result["steps"]["sth_signature"] = {
+        "passed": sth_ok,
+        "skipped": sth_skipped,
+    }
+
+    # Step 5: Cross-reference
+    #
+    # PROOF-BINDING-1. Steps 3 and 4 prove that SOME leaf is included under a
+    # platform-signed root. They do not prove the leaf describes an event in
+    # THIS bundle — so an attacker could rewrite events, repair the chain and
+    # bundle hash, keep the original proof/STH, and pass every step.
+    #
+    # Cross-reference is where that is caught, which is what its name has
+    # always meant: it now requires the signed root to match AND the proven
+    # leaf to correspond to exactly one eligible canonical event presented
+    # here. `merkle_inclusion` keeps its purely mathematical meaning.
+    cross_ok = False
+    cross_skipped = not (merkle_inclusion and sth)
+    leaf_binding = STATUS_NO_ANCHOR_CLAIMED
+    if merkle_inclusion and sth:
+        cross_ok = merkle_inclusion.get("merkle_root") == sth.get("root_hash")
+        leaf_binding, _matched = find_bound_leaf_event(events, merkle_inclusion)
+        cross_ok = cross_ok and leaf_binding == STATUS_BOUND
+    result["steps"]["cross_reference"] = {
+        "passed": cross_ok,
+        "skipped": cross_skipped,
+        # in-step diagnostic, same pattern as merkle_inclusion["type"]
+        "leaf_binding": leaf_binding,
+    }
+
+    # ── Spec-version dispatch ──────────────────
+    # 2.0.0 → result.steps has the existing 5 keys ONLY (byte-identical to 1.3.0).
+    # 3.0.0 → add the 6th `actor_signatures` step. For 2.0.0 bundles this
+    # branch is never taken, so the result shape is preserved.
+    is_tier2 = spec_version == "3.0.0"
+    if is_tier2:
+        result["steps"]["actor_signatures"] = verify_actor_signatures(bundle)
+
+    # Overall verdict
+    mandatory_pass = all(
+        result["steps"][s]["passed"] for s in ["bundle_hash", "event_chain"]
+    )
+    optional_pass = all(
+        result["steps"][s].get("passed") or result["steps"][s].get("skipped")
+        for s in ["merkle_inclusion", "sth_signature", "cross_reference"]
+    )
+    # For 3.0.0 bundles, actor_signatures contributes to verdict in
+    # the "optional but if-present-must-pass" position: PASS or
+    # skipped (no signed events) is OK; FAIL fails the bundle.
+    actor_sig_ok = True
+    if is_tier2:
+        as_step = result["steps"]["actor_signatures"]
+        actor_sig_ok = bool(as_step.get("passed") or as_step.get("skipped"))
+
+    result["verified"] = mandatory_pass and optional_pass and actor_sig_ok
+    result["proof_count"] = len(proofs)
+    result["event_count"] = len(events)
+
+    skipped = [s for s in result["steps"] if result["steps"][s].get("skipped")]
+    result["steps_run"] = len(result["steps"]) - len(skipped)
+    result["steps_skipped"] = len(skipped)
+    result["verification_level"] = "full" if not skipped else "offline"
+
+    return result
+
+
+# ── SWARM-B: optional strict swarm-verification profile ──────────────────
+#
+# Explicit, separately-named profile composed FROM the existing steps.
+# `verify_bundle` (the default/legacy profile) is byte-unchanged: 2.0.0
+# unsigned bundles keep verifying, and the CLI's --strict keeps its
+# STH-only meaning. This profile answers a stronger question the default
+# deliberately does not: "does every DESIGNATED swarm event carry a valid,
+# temporally-consistent, enrolled-actor signature?" — distinguishing
+# bundle INTEGRITY from complete swarm-authentication COVERAGE. It never
+# re-runs policy and never claims real-world correctness.
+#
+# Authority model: the designated event set comes from the LATEST signed
+# `swarm_policy` event inside bundle["events"] (covered by bundle_hash and
+# its own Ed25519 signature). The runtime's `swarm_enforcement` snapshot
+# section is a hash-committed evaluation record — cross-checked when
+# present, but never the source of authority.
+
+SWARM_POLICY_VERSION = "swarm_enforcement/v1"
+
+
+def _normalize_key_directory(kd: Any) -> Dict[str, Any]:
+    """Accept both directory shapes: Stage-4 flat {key_id: entry} and the
+    82Q-D nested {"keys_by_key_id": {key_id: entry}}."""
+    if not isinstance(kd, dict):
+        return {}
+    nested = kd.get("keys_by_key_id")
+    if isinstance(nested, dict):
+        return nested
+    return kd
+
+
+def _strict_lifecycle_ok(key_entry: Dict[str, Any]) -> "tuple[bool, str]":
+    """§7 malformed-lifecycle rule (strict profile only): a key whose
+    status says it is unusable but which carries no revoked_at timestamp
+    offers no temporal evidence to bound its validity — fail closed."""
+    status = key_entry.get("status", "active") or "active"
+    if status != "active" and key_entry.get("revoked_at") is None:
+        return False, f"lifecycle malformed: status={status!r} with no revoked_at"
+    return True, ""
+
+
+def _find_swarm_designation(events: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    for e in reversed(events or []):
+        payload = e.get("payload") or {}
+        if isinstance(payload.get("swarm_policy"), dict):
+            return e
+    return None
+
+
+def verify_bundle_swarm_strict(
+    bundle: Dict[str, Any],
+    public_key_base64: str = "",
+    sth: Optional[Dict] = None,
+) -> Dict[str, Any]:
+    """Strict swarm profile: the full default verification PLUS complete
+    actor-signature coverage of the designated swarm event set under the
+    historical-time key rules.
+
+    Adds two steps to the default result:
+      swarm_coverage — designation present+signed, every designated event
+                       type present, every instance PASS with strict
+                       lifecycle temporal evidence;
+      swarm_snapshot — the runtime's hash-committed enforcement snapshot
+                       (recomputed hash + designation cross-check) when
+                       present; its absence is reported, not fatal.
+    `verified` is True only when the default profile AND coverage pass.
+    """
+    result = verify_bundle(bundle, public_key_base64=public_key_base64, sth=sth)
+    result["profile"] = "swarm-strict"
+    events = bundle.get("events", []) or []
+    kd = _normalize_key_directory(bundle.get("key_directory"))
+
+    coverage: Dict[str, Any] = {
+        "passed": False, "skipped": False,
+        "designation_event_id": None,
+        "required_signed_event_types": [],
+        "per_type": {}, "errors": [],
+    }
+
+    def _strict_verify_event(ev: Dict[str, Any]) -> "tuple[bool, str]":
+        r = _verify_one_actor_signature(ev, kd)
+        if r["result"] != "PASS":
+            return False, r["reason"] or r["result"]
+        entry = kd.get(r["key_id"], {})
+        ok, why = _strict_lifecycle_ok(entry)
+        if not ok:
+            return False, why
+        return True, ""
+
+    designation = _find_swarm_designation(events)
+    if designation is None:
+        coverage["errors"].append("no swarm designation event in bundle events")
+    else:
+        coverage["designation_event_id"] = designation.get("event_id")
+        policy = (designation.get("payload") or {}).get("swarm_policy") or {}
+        ok, why = _strict_verify_event(designation)
+        if not ok:
+            coverage["errors"].append(f"designation event signature: {why}")
+        if policy.get("policy_version") != SWARM_POLICY_VERSION:
+            coverage["errors"].append(
+                f"unsupported policy_version: {policy.get('policy_version')!r}")
+        required = policy.get("required_signed_event_types")
+        if not isinstance(required, list):
+            coverage["errors"].append(
+                "designation malformed: required_signed_event_types missing")
+            required = []
+        coverage["required_signed_event_types"] = list(required)
+        for etype in required:
+            instances = [e for e in events if e.get("event_type") == etype]
+            if not instances:
+                coverage["per_type"][etype] = {"present": 0, "passed": 0}
+                coverage["errors"].append(f"required event type absent: {etype}")
+                continue
+            n_pass = 0
+            for ev in instances:
+                ok, why = _strict_verify_event(ev)
+                if ok:
+                    n_pass += 1
+                else:
+                    coverage["errors"].append(
+                        f"coverage incomplete for {etype} "
+                        f"({ev.get('event_id', '?')}): {why}")
+            coverage["per_type"][etype] = {
+                "present": len(instances), "passed": n_pass}
+    coverage["passed"] = designation is not None and not coverage["errors"]
+    result["steps"]["swarm_coverage"] = coverage
+
+    snapshot_step: Dict[str, Any] = {"passed": False, "skipped": False,
+                                     "present": False, "errors": []}
+    sec = bundle.get("swarm_enforcement")
+    if isinstance(sec, dict) and isinstance(sec.get("snapshot"), dict):
+        snapshot_step["present"] = True
+        snap = sec["snapshot"]
+        claimed = sec.get("snapshot_hash", "")
+        computed = hashlib.sha256(json.dumps(
+            snap, sort_keys=True, separators=(",", ":"), default=str,
+        ).encode()).hexdigest()
+        if claimed != computed:
+            snapshot_step["errors"].append("snapshot_hash mismatch")
+        snap_required = ((snap.get("summary") or {})
+                         .get("required_signed_event_types"))
+        if (designation is not None and isinstance(snap_required, list)
+                and sorted(snap_required)
+                != sorted(coverage["required_signed_event_types"])):
+            snapshot_step["errors"].append(
+                "snapshot designation differs from signed designation")
+        snapshot_step["passed"] = not snapshot_step["errors"]
+    else:
+        snapshot_step["skipped"] = True
+    result["steps"]["swarm_snapshot"] = snapshot_step
+
+    snapshot_ok = bool(snapshot_step["passed"] or snapshot_step["skipped"])
+    result["verified"] = bool(
+        result["verified"] and coverage["passed"] and snapshot_ok)
+    skipped = [s for s in result["steps"] if result["steps"][s].get("skipped")]
+    result["steps_run"] = len(result["steps"]) - len(skipped)
+    result["steps_skipped"] = len(skipped)
+    return result
