@@ -382,3 +382,92 @@ class TestOfflineVerification:
         # Merkle and STH skipped (not present in this test)
         assert result["steps"]["merkle_inclusion"]["passed"] is False
         assert result["steps"]["sth_signature"]["skipped"] is True
+
+
+# ── PUBLIC-PROTOCOL-FINALITY-ALIGNMENT-1 — normative 17-type registry ────────
+
+
+class TestFinalityRegistryV2:
+    """The public mirror describes the deployed runtime's future-emission
+    eligibility vocabulary: 17 types, registry version 2, deterministic
+    content hash. Semantics are emit-time, append-only and forward-only
+    (historical_backfill: false)."""
+
+    CANONICAL_17 = (
+        "ACCEPTED", "AUTO_GO_APPROVED", "CONSEQUENCE_AUTHORIZED",
+        "DEAL_PARTY_ASSIGNED", "DEAL_PARTY_REVOKED", "GO_APPROVED",
+        "INFERENCE_CONSEQUENCE_RECORDED", "INFERENCE_DECISION_RECORDED",
+        "INFERENCE_EVIDENCE_SUBMITTED", "INFERENCE_POLICY_CHECKED",
+        "OUTCOME_RECONCILED", "OUTCOME_RECORDED", "PAYOUT_CONFIRMED",
+        "PROOF_READY", "PROOF_VERIFIED", "REJECTED", "SETTLED",
+    )
+
+    def test_registry_members_version_and_hash(self):
+        import hashlib
+        from protocol.merkle_log import (
+            FINALITY_REGISTRY_VERSION, TransparencyLog,
+            finality_registry, finality_registry_hash)
+        assert finality_registry() == self.CANONICAL_17
+        assert TransparencyLog.FINALITY_EVENTS == frozenset(self.CANONICAL_17)
+        assert FINALITY_REGISTRY_VERSION == 2
+        expected = hashlib.sha256(
+            ("\n".join(self.CANONICAL_17) + "\nversion=2").encode()
+        ).hexdigest()
+        assert finality_registry_hash() == expected
+
+    def test_all_17_types_are_append_eligible(self):
+        import tempfile
+        from pathlib import Path
+        from protocol.merkle_log import LogSigner, TransparencyLog
+        with tempfile.TemporaryDirectory() as t:
+            log = TransparencyLog(log_dir=Path(t) / "log",
+                                  signer=LogSigner(key_dir=Path(t) / "keys"))
+            for i, et in enumerate(self.CANONICAL_17):
+                assert log.append_entry({
+                    "event_type": et, "deal_id": f"deal_c17_{i}",
+                    "event_id": f"evt_c17_{i}", "hash": "h" * 64,
+                    "timestamp": "2026-01-01T00:00:00Z"}) is not None, et
+            assert log.tree_size == 17
+
+    def test_non_final_and_unknown_types_fail_closed(self):
+        import tempfile
+        from pathlib import Path
+        from protocol.merkle_log import LogSigner, TransparencyLog
+        with tempfile.TemporaryDirectory() as t:
+            log = TransparencyLog(log_dir=Path(t) / "log",
+                                  signer=LogSigner(key_dir=Path(t) / "keys"))
+            for et in ("MANDATE_CREATED", "INVOICE_GENERATED",
+                       "UNKNOWN_TYPE", ""):
+                assert log.append_entry({
+                    "event_type": et, "deal_id": "d", "event_id": "e",
+                    "hash": "h" * 64,
+                    "timestamp": "2026-01-01T00:00:00Z"}) is None, et
+            assert log.tree_size == 0
+
+    def test_upgrade_is_forward_only_for_self_hosters(self):
+        """A pre-upgrade (7-type era) log reloads with identical tree size
+        and root — no backfill, no replay, no reclassification — and the
+        newly eligible types append prospectively only."""
+        import tempfile
+        from pathlib import Path
+        from protocol.merkle_log import LogSigner, TransparencyLog
+        with tempfile.TemporaryDirectory() as t:
+            log_dir, keys = Path(t) / "log", Path(t) / "keys"
+            pre = TransparencyLog(log_dir=log_dir, signer=LogSigner(key_dir=keys))
+            for i, et in enumerate(("PROOF_READY", "SETTLED",
+                                    "OUTCOME_RECORDED")):
+                assert pre.append_entry({
+                    "event_type": et, "deal_id": f"deal_v1_{i}",
+                    "event_id": f"evt_v1_{i}", "hash": "h" * 64,
+                    "timestamp": "2026-01-01T00:00:00Z"}) is not None
+            size, root = pre.tree_size, pre._tree.get_root()
+            reloaded = TransparencyLog(log_dir=log_dir,
+                                       signer=LogSigner(key_dir=keys))
+            assert reloaded.tree_size == size == 3
+            assert reloaded._tree.get_root() == root
+            assert reloaded.append_entry({
+                "event_type": "DEAL_PARTY_ASSIGNED", "deal_id": "deal_v2_0",
+                "event_id": "evt_v2_0", "hash": "h" * 64,
+                "timestamp": "2026-01-01T00:00:01Z"}) is not None
+            assert reloaded.tree_size == 4
+            assert reloaded.get_entry(0)["event_type"] == "PROOF_READY"

@@ -454,6 +454,27 @@ def _compute_root_from_proof(lo, hi, proof, proof_idx):
     return ""
 
 
+# ── Canonical finality registry surface (PUBLIC-PROTOCOL-FINALITY-ALIGNMENT-1) ──
+#
+# Mirror of the runtime authority's registry surface. Any change to the
+# member set MUST bump FINALITY_REGISTRY_VERSION; the runtime repository's
+# cross-repo drift guard pins member-set, version and content-hash parity.
+
+FINALITY_REGISTRY_VERSION = 2  # v1 = the original 7-type settlement set
+
+
+def finality_registry() -> tuple:
+    """Deterministically ordered (sorted) view of the canonical registry."""
+    return tuple(sorted(TransparencyLog.FINALITY_EVENTS))
+
+
+def finality_registry_hash() -> str:
+    """Deterministic content hash binding the ordered members + version."""
+    material = "\n".join(finality_registry()) + \
+        f"\nversion={FINALITY_REGISTRY_VERSION}"
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
 # ── Transparency Log ──
 
 
@@ -468,8 +489,27 @@ class TransparencyLog:
     - Settlement-finality event filtering
     """
 
+    # ── Canonical finality registry — NORMATIVE MIRROR of the deployed
+    # AiGentsy runtime authority (PUBLIC-PROTOCOL-FINALITY-ALIGNMENT-1).
+    #
+    # This public module is executable reference code for self-hosters and
+    # never controls AiGentsy production. The member set below describes the
+    # deployed runtime's future-emission eligibility vocabulary exactly; a
+    # cross-repository drift guard in the runtime repository pins member-set,
+    # version and content-hash parity in both working and committed trees.
+    #
+    # Semantics:
+    #   * emit-time  — consulted only when a new event is emitted;
+    #   * append-only — reload reads the log's own stored JSONL leaves;
+    #   * forward-only — upgrading from the previous 7-type registry changes
+    #     NOTHING about an existing log: no backfill, no replay, no
+    #     reclassification of historical events into leaves
+    #     (historical_backfill: false). Existing leaves, indices, tree sizes,
+    #     roots, signed tree heads and issued proofs remain byte-identical;
+    #   * unknown or non-final event types fail closed (append_entry -> None).
     FINALITY_EVENTS = frozenset(
         {
+            # settlement / verification lifecycle (registry v1)
             "PROOF_READY",
             "PROOF_VERIFIED",
             "GO_APPROVED",
@@ -477,6 +517,21 @@ class TransparencyLog:
             "SETTLED",
             "PAYOUT_CONFIRMED",
             "OUTCOME_RECORDED",
+            # post-action read-back reconciliation
+            "OUTCOME_RECONCILED",
+            # exact consequence authorization
+            "CONSEQUENCE_AUTHORIZED",
+            # inference acceptance lifecycle
+            "INFERENCE_EVIDENCE_SUBMITTED",
+            "INFERENCE_POLICY_CHECKED",
+            "INFERENCE_DECISION_RECORDED",
+            "INFERENCE_CONSEQUENCE_RECORDED",
+            # policy-bearing acceptance decisions
+            "ACCEPTED",
+            "REJECTED",
+            # canonical deal-party authority records
+            "DEAL_PARTY_ASSIGNED",
+            "DEAL_PARTY_REVOKED",
         }
     )
 
