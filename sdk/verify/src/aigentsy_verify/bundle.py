@@ -605,6 +605,66 @@ STATUS_ANCHOR_UNBOUND = "anchor_unbound"
 STATUS_ANCHOR_AMBIGUOUS = "anchor_ambiguous"
 STATUS_NO_ANCHOR_CLAIMED = "no_anchor_claimed"
 
+# DR-2 — consequence-identity equality, reported inside step 5 (never a 6th
+# step). A bundle that claims an exact consequence authorization must show the
+# dispatched / confirmed / reconciled identity equal to an AUTHORIZED one.
+CONSEQUENCE_NONE_CLAIMED = "no_consequence_authorization_claimed"
+CONSEQUENCE_BOUND = "consequence_bound"
+CONSEQUENCE_NOT_DISPATCHED = "consequence_authorized_not_dispatched"
+CONSEQUENCE_MISMATCH = "consequence_identity_mismatch"
+
+# Payload keys that carry a dispatched/observed consequence identity.
+_CONSEQUENCE_REF_KEYS = ("consequence_identity_hash", "identity_hash")
+# Events that RECORD an authorization (the authority side of the equality).
+_CONSEQUENCE_AUTH_TYPES = ("CONSEQUENCE_AUTHORIZED",)
+
+
+def check_consequence_identity(events):
+    """Return (status, authorized_set) for the consequence-identity equality.
+
+    Historical bundles that claim no exact authorization return
+    CONSEQUENCE_NONE_CLAIMED and are unaffected — this is what keeps every
+    previously valid bundle valid.
+
+    When an authorization IS present, every other event carrying a consequence
+    identity must reference one of the AUTHORIZED identities. A dispatched or
+    reconciled identity that matches nothing authorized is exactly the term
+    substitution this check exists to catch, and it survives a full bundle
+    rehash because it is an internal-consistency requirement, not a hash.
+    """
+    authorized = set()
+    referenced = []
+    for e in events or []:
+        if not isinstance(e, dict):
+            continue
+        payload = e.get("payload")
+        if not isinstance(payload, dict):
+            continue
+        etype = e.get("event_type", "")
+        if etype in _CONSEQUENCE_AUTH_TYPES:
+            h = payload.get("identity_hash")
+            # only an AUTHORIZED decision confers authority
+            if isinstance(h, str) and h and payload.get("decision") == "authorized":
+                authorized.add(h)
+            continue
+        for k in _CONSEQUENCE_REF_KEYS:
+            v = payload.get(k)
+            if isinstance(v, str) and v:
+                referenced.append(v)
+                break
+    if not authorized:
+        return (CONSEQUENCE_NONE_CLAIMED, authorized)
+    if not referenced:
+        # Authorized but not yet dispatched — a legitimate intermediate state,
+        # and the shape of every already-issued bundle that recorded an
+        # authorization without a subsequent dispatch. Reported, never failed:
+        # failing it would retroactively invalidate valid historical bundles.
+        return (CONSEQUENCE_NOT_DISPATCHED, authorized)
+    for v in referenced:
+        if v not in authorized:
+            return (CONSEQUENCE_MISMATCH, authorized)
+    return (CONSEQUENCE_BOUND, authorized)
+
 _LEAF_FIELDS = ("deal_id", "event_type", "event_id", "event_hash", "timestamp")
 
 
@@ -770,11 +830,22 @@ def verify_bundle(
         cross_ok = merkle_inclusion.get("merkle_root") == sth.get("root_hash")
         leaf_binding, _matched = find_bound_leaf_event(events, merkle_inclusion)
         cross_ok = cross_ok and leaf_binding == STATUS_BOUND
+
+    # DR-2 — consequence-identity equality, reported in this same step so the
+    # five-step contract is preserved exactly. A bundle claiming an exact
+    # consequence authorization must show the dispatched/observed identity
+    # equal to an authorized one; a bundle claiming none is unaffected, which
+    # keeps every historical bundle valid.
+    consequence_binding, _authorized = check_consequence_identity(events)
+    if consequence_binding == CONSEQUENCE_MISMATCH:
+        cross_ok = False
+
     result["steps"]["cross_reference"] = {
         "passed": cross_ok,
         "skipped": cross_skipped,
         # in-step diagnostic, same pattern as merkle_inclusion["type"]
         "leaf_binding": leaf_binding,
+        "consequence_binding": consequence_binding,
     }
 
     # ── Spec-version dispatch ──────────────────

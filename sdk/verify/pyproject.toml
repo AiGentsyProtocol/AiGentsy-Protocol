@@ -4,10 +4,10 @@ build-backend = "hatchling.build"
 
 [project]
 name = "aigentsy-verify"
-version = "1.2.1"
+version = "1.6.1"
 description = "Standalone offline verification for AiGentsy ProofPack v2 bundles, attestations, and policy_layer display"
 readme = "README.md"
-license = "MIT"
+license = "Apache-2.0"
 requires-python = ">=3.9"
 authors = [
     { name = "AiGentsy", email = "admin@aigentsy.com" },
@@ -16,7 +16,7 @@ keywords = ["aigentsy", "verification", "proof-bundle", "merkle", "ed25519", "tr
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
@@ -37,7 +37,10 @@ test = ["pytest>=7.0"]
 
 [project.urls]
 Homepage = "https://aigentsy.com"
-Repository = "https://github.com/AiGentsyProtocol/AiGentsy-Protocol"
+# No Repository link. This package is built from the private hosted-runtime
+# repository, and the public protocol repository carries an older mirror, not
+# the current shipping source. Advertising either would be misleading, so the
+# entry is omitted until a public repository holds the released source.
 Documentation = "https://aigentsy.com/data/proof_bundle_spec.md"
 "Public Key" = "https://aigentsy-ame-runtime.onrender.com/protocol/merkle/public-key"
 "Trust Center" = "https://aigentsy.com/trust"
