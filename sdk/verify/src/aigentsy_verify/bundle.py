@@ -665,6 +665,70 @@ def check_consequence_identity(events):
             return (CONSEQUENCE_MISMATCH, authorized)
     return (CONSEQUENCE_BOUND, authorized)
 
+# ANCHORLESS-VERDICT-1 — structural validation of UNTRUSTED anchor material.
+#
+# A bundle is untrusted input, but a hostile `merkle_inclusion` block used to
+# escape as an uncaught TypeError/ValueError/KeyError out of proof
+# normalization or RFC6962 verification, so a caller got NO verdict at all
+# rather than a failed one — a denial-of-verdict on attacker-chosen bytes.
+#
+# This validator is REJECTION-PRESERVING, not permissive coercion. A malformed
+# anchor is never "repaired" into something that might still verify: the whole
+# block is replaced by _FAILED_ANCHOR, whose tree_size of 0 makes
+# verify_inclusion return False on its very first guard, before any hex
+# decoding, any recursion and any root comparison. That closes the collision
+# trap a naive sanitizer would open — e.g. dropping a malformed proof to []
+# while keeping tree_size 1 and leaf_hash == merkle_root would make a hostile
+# bundle VERIFY as a valid single-leaf tree.
+#
+# merkle.py and the RFC6962 algorithm are untouched, and a well-formed anchor is
+# returned as the SAME object, so valid proofs take exactly the same path and
+# produce exactly the same result as before.
+_HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
+
+# tree_size 0 → `if tree_size == 0 ...: return False` on entry. Unreachable-pass.
+_FAILED_ANCHOR = {"leaf_index": 0, "tree_size": 0, "leaf_hash": "",
+                  "merkle_root": "", "proof": []}
+
+
+def _is_hash_hex(value) -> bool:
+    """A SHA-256 hash as the log emits it: 64 hex characters, nothing else."""
+    return (isinstance(value, str) and len(value) == 64
+            and all(c in _HEX_DIGITS for c in value))
+
+
+def _is_index(value) -> bool:
+    """A non-negative int. `bool` is an int subclass, so True would otherwise
+    masquerade as 1 and hand an attacker a valid single-leaf tree size."""
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _sanitized_anchor(merkle_inclusion):
+    """Return the anchor unchanged if well-formed, else _FAILED_ANCHOR.
+
+    Every rejection routes to the SAME guaranteed-failing state, so no property
+    of the malformed input survives to influence the verdict.
+    """
+    if not isinstance(merkle_inclusion, dict):
+        return _FAILED_ANCHOR
+    if not (_is_index(merkle_inclusion.get("leaf_index"))
+            and _is_index(merkle_inclusion.get("tree_size"))):
+        return _FAILED_ANCHOR
+    if not (_is_hash_hex(merkle_inclusion.get("leaf_hash"))
+            and _is_hash_hex(merkle_inclusion.get("merkle_root"))):
+        return _FAILED_ANCHOR
+    proof = merkle_inclusion.get("proof", [])
+    # a str is iterable, so an unguarded `for p in proof` would silently walk
+    # its characters instead of its nodes — require a real sequence.
+    if not isinstance(proof, (list, tuple)):
+        return _FAILED_ANCHOR
+    for node in proof:
+        candidate = node.get("hash") if isinstance(node, dict) else node
+        if not _is_hash_hex(candidate):
+            return _FAILED_ANCHOR
+    return merkle_inclusion
+
+
 _LEAF_FIELDS = ("deal_id", "event_type", "event_id", "event_hash", "timestamp")
 
 
@@ -785,6 +849,11 @@ def verify_bundle(
     merkle_type = "none"
     if merkle_inclusion and "leaf_index" in merkle_inclusion and "tree_size" in merkle_inclusion:
         merkle_type = "rfc6962"
+        # ANCHORLESS-VERDICT-1 — structurally validate UNTRUSTED anchor material
+        # before the frozen normalization/verification below. See
+        # _sanitized_anchor: valid anchors pass through unchanged (same object),
+        # malformed ones are replaced by the guaranteed-failing sentinel.
+        merkle_inclusion = _sanitized_anchor(merkle_inclusion)
         proof_hashes = [
             p["hash"] if isinstance(p, dict) else p
             for p in merkle_inclusion.get("proof", [])
@@ -839,6 +908,22 @@ def verify_bundle(
     consequence_binding, _authorized = check_consequence_identity(events)
     if consequence_binding == CONSEQUENCE_MISMATCH:
         cross_ok = False
+        # ANCHORLESS-VERDICT-1 — `skipped` means UNEVALUATED, never
+        # failed-but-ignored. The overall verdict tolerates a skipped step, so
+        # while `cross_skipped` was derived from anchor availability ALONE, a
+        # bundle with no Merkle inclusion or STH reported this mismatch and
+        # still returned verified=True. Consequence equality is computed from
+        # the event bytes present in the bundle and does not depend on any
+        # anchor, so once it establishes a DEFINITIVE failure the step has been
+        # evaluated by definition. Anchor unavailability must not erase a
+        # result that was actually computed.
+        #
+        # Deliberately narrow: only a definitive MISMATCH clears the flag.
+        # none_claimed, authorized_not_dispatched and bound leave it exactly as
+        # anchor availability set it, so legitimate anchorless bundles keep
+        # their established behaviour and no anchorless bundle becomes invalid
+        # merely for lacking an anchor.
+        cross_skipped = False
 
     result["steps"]["cross_reference"] = {
         "passed": cross_ok,
