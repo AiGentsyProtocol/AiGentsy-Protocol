@@ -4,17 +4,43 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aigentsy-langgraph"
-version = "0.2.0"
+version = "0.4.0"
 description = "AiGentsy Settlement Protocol nodes for LangGraph"
 readme = "README.md"
-license = {text = "MIT"}
+license = "Apache-2.0"
 requires-python = ">=3.9"
 dependencies = ["httpx>=0.24"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries",
+]
 
 [project.optional-dependencies]
+# Existing extra — installs LangGraph itself when the dev wants the
+# StateGraph runtime alongside the adapter.
 langgraph = ["langgraph>=0.0.20"]
+
+# 0.3.0 — Tier-2 signed events. Required ONLY for the signed branch
+# of accept_node / reject_node + the enroll_key_node keypair
+# generation. The unsigned (attribution-only / Tier-1) path stays on
+# the lightweight httpx-only base install. We do NOT depend on the
+# rich `aigentsy` SDK here — SigningKeypair + the wire-level guard +
+# the send_signed_event helper are vendored into this package
+# (mirroring the contract of sdk/aigentsy/src/aigentsy/keypair.py
+# and sdk/aigentsy/src/aigentsy/client.py:send_signed_event in the
+# aigentsy-ame-runtime repo).
+signed = ["cryptography>=41.0"]
 
 [project.urls]
 Homepage = "https://aigentsy.com"
 Documentation = "https://aigentsy.com/quickstart"
-Repository = "https://github.com/AiGentsyProtocol/AiGentsy-Protocol"
+# No Repository link. This package is built from the private hosted-runtime
+# repository, and the public protocol repository carries an older mirror, not
+# the current shipping source. Advertising either would be misleading, so the
+# entry is omitted until a public repository holds the released source.

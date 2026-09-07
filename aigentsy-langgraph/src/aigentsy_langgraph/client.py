@@ -109,3 +109,160 @@ class AsyncAiGentsyClient:
     async def get_proof_chain(self, deal_id: str) -> Dict:
         resp = await self._client.get(f"/protocol/proof-chain/{deal_id}")
         return resp.json()
+
+    # ── 0.3.0 additions ────────────────────────────────────────────
+    #
+    # All methods below are additive — the 0.2.0 surface is byte-
+    # unchanged. They wrap existing live endpoints with no new backend
+    # behavior. The signed-event helper (signing.send_signed_event)
+    # uses ``_post_signed`` to drive the prepare/sign/submit flow.
+
+    async def get_acceptance_by_deal(self, deal_id: str) -> Dict:
+        """GET /protocol/acceptance/deal/{deal_id} — returns the
+        current acceptance record for a deal, or ``acceptance: None``
+        if none exists yet. Read-only."""
+        resp = await self._client.get(
+            f"/protocol/acceptance/deal/{deal_id}",
+        )
+        return resp.json()
+
+    async def submit_for_acceptance(
+        self,
+        deal_id: str,
+        downstream_action: str = "settle",
+    ) -> Dict:
+        """POST /protocol/acceptance/submit — creates the acceptance
+        record for a deal. Requires X-API-Key for the submitter.
+        Raises httpx.HTTPStatusError on 4xx/5xx so the node layer can
+        surface a structured backend_error envelope (per the G2
+        contract: failures NEVER swallowed into ok=true)."""
+        resp = await self._client.post(
+            "/protocol/acceptance/submit",
+            json={
+                "deal_id": deal_id,
+                "downstream_action": downstream_action,
+            },
+            headers=self._headers(auth=True),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def accept_output(
+        self,
+        acceptance_id: str,
+        reason: str = "",
+        checks_passed: List[str] = None,
+        checks_failed: List[str] = None,
+    ) -> Dict:
+        """POST /protocol/acceptance/{id}/accept — attribution-only
+        accept. The reviewer's api_key auths the call; the appended
+        ACCEPTED event's actor_id is the reviewer.
+        """
+        resp = await self._client.post(
+            f"/protocol/acceptance/{acceptance_id}/accept",
+            json={
+                "decision": "accept",
+                "reason": reason,
+                "checks_passed": list(checks_passed or []),
+                "checks_failed": list(checks_failed or []),
+            },
+            headers=self._headers(auth=True),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def reject_output(
+        self,
+        acceptance_id: str,
+        reason: str = "",
+        checks_passed: List[str] = None,
+        checks_failed: List[str] = None,
+    ) -> Dict:
+        """POST /protocol/acceptance/{id}/reject — attribution-only
+        reject. ``reason`` is REQUIRED at the node layer (validated
+        upstream in reject_node)."""
+        resp = await self._client.post(
+            f"/protocol/acceptance/{acceptance_id}/reject",
+            json={
+                "decision": "reject",
+                "reason": reason,
+                "checks_passed": list(checks_passed or []),
+                "checks_failed": list(checks_failed or []),
+            },
+            headers=self._headers(auth=True),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def get_outcome_receipt(self, deal_id: str) -> "httpx.Response":
+        """GET /protocol/deals/{deal_id}/outcome-receipt — returns the
+        raw httpx.Response so the node can route on status code:
+
+          200 → signed receipt envelope
+          409 → outcome_not_recorded (clean empty state)
+          404 → deal_not_found
+          422/500 → error envelope
+
+        Read-only, public endpoint (the receipt is portably signed)."""
+        return await self._client.get(
+            f"/protocol/deals/{deal_id}/outcome-receipt",
+        )
+
+    async def get_signing_capability(self, actor_id: str) -> Dict:
+        """GET /actor/{actor_id}/signing-capability — read-only.
+
+        Used by the acceptance nodes to decide whether to attempt the
+        signed path. If the actor has no enrolled key, the node falls
+        through to the attribution-only legacy endpoint — Branch 1 of
+        the Option-3 contract."""
+        resp = await self._client.get(
+            f"/actor/{actor_id}/signing-capability",
+        )
+        return resp.json()
+
+    async def enroll_signing_key(
+        self,
+        actor_id: str,
+        public_key_base64: str,
+        actor_type: str = "agent",
+        key_class: str = "production",
+        metadata: Dict = None,
+    ) -> Dict:
+        """POST /actor/enroll-key — enroll the PUBLIC half of a
+        keypair. The body is screened by ``_assert_no_private_material``
+        in the calling node, mirroring the server-side
+        FORBIDDEN_PRIVATE_KEY_FIELDS guard.
+
+        Auth: for ``actor_type='agent'``, the client's stored api_key
+        must authenticate as ``actor_id`` (the agent enrolling its
+        own key)."""
+        from .keypair import _assert_no_private_material
+        body = {
+            "actor_id": actor_id,
+            "actor_type": actor_type,
+            "public_key_base64": public_key_base64,
+            "key_class": key_class,
+        }
+        if metadata:
+            body["metadata"] = metadata
+        _assert_no_private_material(body, "enrollment body")
+        resp = await self._client.post(
+            "/actor/enroll-key",
+            json=body,
+            headers=self._headers(auth=True),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def _post_signed(self, path: str, body: Dict) -> Dict:
+        """Internal helper used by signing.send_signed_event for the
+        prepare + submit calls. Raises HTTPStatusError on non-2xx so
+        the signed branch can surface Option-3 blocks as structured
+        errors (no swallowed fake success)."""
+        resp = await self._client.post(
+            path,
+            json=body,
+            headers=self._headers(auth=True),
+        )
+        resp.raise_for_status()
+        return resp.json()

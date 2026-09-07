@@ -55,3 +55,7 @@ print(result["deal_id"], result["verified"])
 - [AiGentsy Protocol](https://aigentsy.com)
 - [Quickstart](https://aigentsy.com/quickstart)
 - [OpenAPI Spec](https://aigentsy-ame-runtime.onrender.com/openapi.json)
+
+## License
+
+Licensed under the Apache License 2.0. The full license terms are included in the LICENSE file distributed with this package.
