@@ -988,6 +988,11 @@ def verify_bundle(
 
 SWARM_POLICY_VERSION = "swarm_enforcement/v1"
 
+# G3-DECISION-EVIDENCE-1 — the versioned decision context this verifier
+# understands. An unknown version is reported as unproven, never accepted
+# under today's meaning.
+SWARM_DECISION_CONTEXT_VERSION = "swarm_decision/v1"
+
 
 def _normalize_key_directory(kd: Any) -> Dict[str, Any]:
     """Accept both directory shapes: Stage-4 flat {key_id: entry} and the
@@ -1120,9 +1125,124 @@ def verify_bundle_swarm_strict(
         snapshot_step["skipped"] = True
     result["steps"]["swarm_snapshot"] = snapshot_step
 
+    # ── G3-DECISION-EVIDENCE-1 — the committed decision record ───────────
+    #
+    # The snapshot above is the exporter's OBSERVATION: it re-evaluates and
+    # re-reads the flag at export time, and it lives outside bundle_hash. The
+    # authoritative record of what the gate actually decided is the
+    # `swarm_decision` context on a CONSEQUENCE_AUTHORIZED event inside
+    # bundle["events"] — which bundle_hash covers, the event chain hash-links,
+    # and (when anchored) the transparency log includes.
+    #
+    # This step therefore reports two things separately: whether the recorded
+    # context is internally VALID, and how STRONG the authentication behind it
+    # is. A definitive contradiction fails outright and is never softened by a
+    # missing anchor; a missing anchor only weakens strength.
+    decision_step: Dict[str, Any] = {
+        "passed": False, "skipped": False, "present": False,
+        "records": [], "strength": "none", "errors": [],
+    }
+    auth_events = [
+        e for e in events
+        if e.get("event_type") == "CONSEQUENCE_AUTHORIZED"
+        and isinstance((e.get("payload") or {}).get("swarm_decision"), dict)
+    ]
+    if not auth_events:
+        decision_step["skipped"] = True
+    else:
+        decision_step["present"] = True
+        deal_id = bundle.get("deal_id", "")
+        for ev in auth_events:
+            payload = ev.get("payload") or {}
+            ctx = payload.get("swarm_decision") or {}
+            rec: Dict[str, Any] = {
+                "event_id": ev.get("event_id", ""),
+                "identity_hash": payload.get("identity_hash", ""),
+                "decision": payload.get("decision", ""),
+                "enforcement": ctx.get("enforcement"),
+                "evaluated": ctx.get("evaluated"),
+                "applicable": ctx.get("applicable"),
+                "satisfied": ctx.get("satisfied"),
+                "reason": ctx.get("reason", ""),
+                "errors": [],
+            }
+            # Supported context version — an unknown version is unproven, not
+            # silently accepted under today's meaning.
+            if ctx.get("context_version") != SWARM_DECISION_CONTEXT_VERSION:
+                rec["errors"].append(
+                    "unsupported swarm_decision context_version: "
+                    f"{ctx.get('context_version') or 'none'}")
+            # Types. A coerced value must never become a proven state.
+            if ctx.get("enforcement") not in ("on", "off"):
+                rec["errors"].append("enforcement must be 'on' or 'off'")
+            if not isinstance(ctx.get("evaluated"), bool):
+                rec["errors"].append("evaluated must be boolean")
+            for f in ("applicable", "satisfied"):
+                if ctx.get(f) is not None and not isinstance(ctx.get(f), bool):
+                    rec["errors"].append(f"{f} must be boolean or null")
+            # Replay digest — recomputed, so a tampered context is caught even
+            # when every attacker-recomputable hash around it was repaired.
+            claimed_digest = payload.get("swarm_decision_digest", "")
+            if claimed_digest:
+                material = {k: v for k, v in ctx.items()
+                            if k not in ("recorded_at", "event_id")}
+                computed_digest = hashlib.sha256(json.dumps(
+                    material, sort_keys=True, separators=(",", ":"),
+                    default=str,
+                ).encode()).hexdigest()
+                if computed_digest != claimed_digest:
+                    rec["errors"].append("swarm_decision_digest mismatch")
+            else:
+                rec["errors"].append("swarm_decision_digest missing")
+            # Correlation — the context must name the decision it belongs to,
+            # so one authorization can never borrow another's evidence.
+            if ctx.get("identity_hash") and payload.get("identity_hash") \
+                    and ctx["identity_hash"] != payload["identity_hash"]:
+                rec["errors"].append(
+                    "context identity_hash does not match its own event")
+            if deal_id and ev.get("deal_id") and ev["deal_id"] != deal_id:
+                rec["errors"].append("event deal_id does not match the bundle")
+            # Designation correlation — when the context names a designation,
+            # it must be the one the SIGNED designation established.
+            ctx_required = ctx.get("required_signed_event_types")
+            if (designation is not None and isinstance(ctx_required, list)
+                    and sorted(ctx_required)
+                    != sorted(coverage["required_signed_event_types"])):
+                rec["errors"].append(
+                    "context designation differs from signed designation")
+            rec["valid"] = not rec["errors"]
+            decision_step["records"].append(rec)
+            decision_step["errors"].extend(rec["errors"])
+
+        decision_step["passed"] = not decision_step["errors"]
+        # Strength of the authentication behind a VALID record. The record
+        # lives in bundle["events"], so bundle_hash + event_chain make it
+        # integrity-bound; Merkle inclusion under a signed tree head makes it
+        # platform-anchored. A plain event hash alone is neither.
+        steps = result["steps"]
+
+        def _ok(name):
+            s = steps.get(name) or {}
+            return bool(s.get("passed"))
+        if not decision_step["passed"]:
+            decision_step["strength"] = "invalid"
+        elif _ok("bundle_hash") and _ok("event_chain") \
+                and _ok("merkle_inclusion") and _ok("sth_signature"):
+            decision_step["strength"] = "authenticated"
+        elif _ok("bundle_hash") and _ok("event_chain"):
+            decision_step["strength"] = "integrity_bound"
+        else:
+            decision_step["strength"] = "unproven"
+    result["steps"]["swarm_decision"] = decision_step
+
     snapshot_ok = bool(snapshot_step["passed"] or snapshot_step["skipped"])
+    # A definitive contradiction in the recorded decision is fatal. Its
+    # ABSENCE is not — historical bundles predate this context and keep their
+    # legitimate integrity results without gaining any enforcement claim.
+    decision_ok = bool(decision_step["passed"] or decision_step["skipped"])
     result["verified"] = bool(
-        result["verified"] and coverage["passed"] and snapshot_ok)
+        result["verified"] and coverage["passed"] and snapshot_ok
+        and decision_ok)
     skipped = [s for s in result["steps"] if result["steps"][s].get("skipped")]
     result["steps_run"] = len(result["steps"]) - len(skipped)
     result["steps_skipped"] = len(skipped)

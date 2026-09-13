@@ -204,3 +204,36 @@ Verify event hash integrity and prev_hash chain linkage.
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Swarm decision evidence (1.6.3)
+
+The strict profile adds a `swarm_decision` step.
+
+Earlier releases could only report the runtime's **export-time** swarm snapshot:
+it is re-evaluated when the bundle is exported, reads the enforcement flag at
+that moment, and lives outside `bundle_hash`. It is an observation, and 1.6.3
+labels it as one.
+
+`swarm_decision` reads the **committed** record instead — the `swarm_decision`
+context on a `CONSEQUENCE_AUTHORIZED` event inside `bundle["events"]`, which
+`bundle_hash` covers and the event chain hash-links. The step reports validity
+and authentication strength separately:
+
+| `strength` | Meaning |
+| --- | --- |
+| `authenticated` | valid, and bundle hash, event chain, Merkle inclusion and STH signature all verify |
+| `integrity_bound` | valid, and bundle hash + event chain verify, but the bundle is unanchored |
+| `unproven` | valid record, but the surrounding integrity steps did not verify |
+| `invalid` | a definitive contradiction — rejected regardless of anchoring |
+| `none` | no decision record present |
+
+A definitive contradiction (recomputed digest mismatch, unsupported
+`context_version`, wrong types, identity or deal correlation mismatch,
+designation disagreement) fails the step and is never softened by a missing
+anchor. Absence is not failure: bundles produced before this context keep their
+existing results and gain no enforcement claim.
+
+Distinguishing values matter. `evaluated: false` with `applicable`/`satisfied`
+as `null` means the gate did not evaluate — it never reads as a negative
+result. An unknown or missing `enforcement` value is reported as unproven and is
+never coerced into a proven `off`.
