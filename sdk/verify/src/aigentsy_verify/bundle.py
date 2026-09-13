@@ -1142,10 +1142,14 @@ def verify_bundle_swarm_strict(
         "passed": False, "skipped": False, "present": False,
         "records": [], "strength": "none", "errors": [],
     }
+    # R4 — ABSENT is not MALFORMED. An event that carries no swarm_decision at
+    # all is historical evidence predating this context and is legitimately
+    # skipped. An event that carries the key but not an object is malformed
+    # PRESENT evidence and must fail, never be silently read as absent.
     auth_events = [
         e for e in events
         if e.get("event_type") == "CONSEQUENCE_AUTHORIZED"
-        and isinstance((e.get("payload") or {}).get("swarm_decision"), dict)
+        and "swarm_decision" in (e.get("payload") or {})
     ]
     if not auth_events:
         decision_step["skipped"] = True
@@ -1154,7 +1158,8 @@ def verify_bundle_swarm_strict(
         deal_id = bundle.get("deal_id", "")
         for ev in auth_events:
             payload = ev.get("payload") or {}
-            ctx = payload.get("swarm_decision") or {}
+            raw_ctx = payload.get("swarm_decision")
+            ctx = raw_ctx if isinstance(raw_ctx, dict) else {}
             rec: Dict[str, Any] = {
                 "event_id": ev.get("event_id", ""),
                 "identity_hash": payload.get("identity_hash", ""),
@@ -1166,6 +1171,10 @@ def verify_bundle_swarm_strict(
                 "reason": ctx.get("reason", ""),
                 "errors": [],
             }
+            if not isinstance(raw_ctx, dict):
+                rec["errors"].append(
+                    "swarm_decision present but not an object "
+                    f"({type(raw_ctx).__name__}) — malformed, not absent")
             # Supported context version — an unknown version is unproven, not
             # silently accepted under today's meaning.
             if ctx.get("context_version") != SWARM_DECISION_CONTEXT_VERSION:
@@ -1177,9 +1186,42 @@ def verify_bundle_swarm_strict(
                 rec["errors"].append("enforcement must be 'on' or 'off'")
             if not isinstance(ctx.get("evaluated"), bool):
                 rec["errors"].append("evaluated must be boolean")
+            # v1 declares applicable/satisfied as REQUIRED keys whose value
+            # may be null. A missing key is malformed, and is distinct from an
+            # explicit null meaning "not evaluated".
             for f in ("applicable", "satisfied"):
-                if ctx.get(f) is not None and not isinstance(ctx.get(f), bool):
+                if isinstance(raw_ctx, dict) and f not in raw_ctx:
+                    rec["errors"].append(
+                        f"{f} missing — v1 requires the key (null when not evaluated)")
+                elif ctx.get(f) is not None and not isinstance(ctx.get(f), bool):
                     rec["errors"].append(f"{f} must be boolean or null")
+            for f in ("reason", "checks_passed", "checks_failed"):
+                if isinstance(raw_ctx, dict) and f not in raw_ctx:
+                    rec["errors"].append(f"{f} missing — required by v1")
+            if "checks_passed" in ctx and not isinstance(ctx.get("checks_passed"), list):
+                rec["errors"].append("checks_passed must be a list")
+            if "checks_failed" in ctx and not isinstance(ctx.get("checks_failed"), list):
+                rec["errors"].append("checks_failed must be a list")
+
+            # Coherent v1 combinations. These are internal contradictions in
+            # the record itself — no policy is re-evaluated here.
+            enf, evl = ctx.get("enforcement"), ctx.get("evaluated")
+            app, sat = ctx.get("applicable"), ctx.get("satisfied")
+            if enf == "off" and evl is True:
+                rec["errors"].append(
+                    "contradiction: enforcement off but evaluated true")
+            if evl is False and (app is not None or sat is not None):
+                rec["errors"].append(
+                    "contradiction: not evaluated but applicable/satisfied stated")
+            if evl is True and app is None:
+                rec["errors"].append(
+                    "contradiction: evaluated true but applicable is null")
+            if app is False and sat is not None:
+                rec["errors"].append(
+                    "contradiction: not applicable but satisfied stated")
+            if app is True and sat is None:
+                rec["errors"].append(
+                    "contradiction: applicable but satisfied is null")
             # Replay digest — recomputed, so a tampered context is caught even
             # when every attacker-recomputable hash around it was repaired.
             claimed_digest = payload.get("swarm_decision_digest", "")
@@ -1202,37 +1244,128 @@ def verify_bundle_swarm_strict(
                     "context identity_hash does not match its own event")
             if deal_id and ev.get("deal_id") and ev["deal_id"] != deal_id:
                 rec["errors"].append("event deal_id does not match the bundle")
-            # Designation correlation — when the context names a designation,
-            # it must be the one the SIGNED designation established.
-            ctx_required = ctx.get("required_signed_event_types")
-            if (designation is not None and isinstance(ctx_required, list)
-                    and sorted(ctx_required)
-                    != sorted(coverage["required_signed_event_types"])):
+            # Acceptance correlation — the context's acceptance_id must be the
+            # one its own event records. Comparing nothing is not validation.
+            ctx_acc, ev_acc = ctx.get("acceptance_id"), payload.get("acceptance_id")
+            if ctx_acc and ev_acc and ctx_acc != ev_acc:
                 rec["errors"].append(
-                    "context designation differs from signed designation")
+                    "context acceptance_id does not match its own event")
+            if ctx.get("hash_version") and payload.get("hash_version") \
+                    and ctx["hash_version"] != payload["hash_version"]:
+                rec["errors"].append(
+                    "context hash_version does not match its own event")
+
+            # Designation correlation — resolved against THIS record's own
+            # named designation event, not against an unrelated latest one.
+            # A named policy_event_id must exist in the bundle and must be a
+            # lawful designation; its policy must be the one cited.
+            ctx_pid = ctx.get("policy_event_id")
+            if ctx_pid:
+                named = None
+                for cand in events:
+                    if cand.get("event_id") == ctx_pid:
+                        named = cand
+                        break
+                if named is None:
+                    rec["errors"].append(
+                        f"context policy_event_id {ctx_pid!r} names no event in this bundle")
+                else:
+                    npol = (named.get("payload") or {}).get("swarm_policy")
+                    if not isinstance(npol, dict):
+                        rec["errors"].append(
+                            "context policy_event_id names an event carrying no swarm_policy")
+                    else:
+                        nreq = npol.get("required_signed_event_types")
+                        creq = ctx.get("required_signed_event_types")
+                        if (isinstance(nreq, list) and isinstance(creq, list)
+                                and sorted(nreq) != sorted(creq)):
+                            rec["errors"].append(
+                                "context designation differs from the designation it names")
+                        if npol.get("policy_version") and ctx.get("policy_version") \
+                                and npol["policy_version"] != ctx["policy_version"]:
+                            rec["errors"].append(
+                                "context policy_version differs from the designation it names")
+            elif designation is not None and isinstance(
+                    ctx.get("required_signed_event_types"), list):
+                # No named designation: fall back to the bundle's signed one.
+                if sorted(ctx["required_signed_event_types"]) \
+                        != sorted(coverage["required_signed_event_types"]):
+                    rec["errors"].append(
+                        "context designation differs from signed designation")
             rec["valid"] = not rec["errors"]
             decision_step["records"].append(rec)
             decision_step["errors"].extend(rec["errors"])
 
         decision_step["passed"] = not decision_step["errors"]
-        # Strength of the authentication behind a VALID record. The record
-        # lives in bundle["events"], so bundle_hash + event_chain make it
-        # integrity-bound; Merkle inclusion under a signed tree head makes it
-        # platform-anchored. A plain event hash alone is neither.
+        # ── R1 — strength is PER RECORD and derived from what the verified
+        # anchor actually covers, not from four general step booleans.
+        #
+        # The event chain is hash-linked FORWARD: every event commits to its
+        # predecessor through prev_hash. So the single anchored leaf event
+        # cryptographically commits to the chain PREFIX up to and including
+        # itself, and says nothing whatever about the events after it. A
+        # decision is therefore authenticated only when the bound leaf event is
+        # that decision or something LATER in the verified chain.
+        #
+        # Two forgeries this closes, both of which the previous predicate
+        # called `authenticated`:
+        #   * a forged decision whose original leaf no longer binds to any
+        #     event (ANCHOR_UNBOUND), and
+        #   * a forged decision appended AFTER an unchanged, genuinely anchored
+        #     earlier event — an earlier anchor never authenticates its suffix.
         steps = result["steps"]
 
         def _ok(name):
             s = steps.get(name) or {}
             return bool(s.get("passed"))
-        if not decision_step["passed"]:
-            decision_step["strength"] = "invalid"
-        elif _ok("bundle_hash") and _ok("event_chain") \
-                and _ok("merkle_inclusion") and _ok("sth_signature"):
-            decision_step["strength"] = "authenticated"
-        elif _ok("bundle_hash") and _ok("event_chain"):
-            decision_step["strength"] = "integrity_bound"
-        else:
-            decision_step["strength"] = "unproven"
+
+        # Integrity of the bundle as written. Necessary for any claim at all.
+        integrity_ok = _ok("bundle_hash") and _ok("event_chain")
+        # A trusted anchor: inclusion under a signed tree head, AND the
+        # existing cross-reference relationship holding. cross_reference is
+        # where PROOF-BINDING-1 and DR-2 live — an anchored bundle whose
+        # cross-reference fails is not a trustworthy anchor for anything.
+        anchor_trusted = (_ok("merkle_inclusion") and _ok("sth_signature")
+                          and _ok("cross_reference"))
+        bind_status, bound_event = find_bound_leaf_event(
+            events, bundle.get("merkle_inclusion"))
+        decision_step["anchor_binding"] = bind_status
+        try:
+            anchor_index = events.index(bound_event) if bound_event is not None else -1
+        except ValueError:
+            anchor_index = -1
+        decision_step["anchor_event_id"] = (
+            (bound_event or {}).get("event_id", "") if bound_event else "")
+
+        weakest = None
+        for rec, ev in zip(decision_step["records"], auth_events):
+            if rec["errors"]:
+                rec["strength"] = "invalid"
+            elif not integrity_ok:
+                rec["strength"] = "unproven"
+            elif (anchor_trusted and bind_status == STATUS_BOUND
+                  and anchor_index >= 0
+                  and events.index(ev) <= anchor_index):
+                # The anchored leaf is this decision, or a later event whose
+                # verified prev_hash chain commits back through it.
+                rec["strength"] = "authenticated"
+                rec["anchor_relationship"] = (
+                    "direct" if events.index(ev) == anchor_index
+                    else "later_anchor_commits_to_this_prefix")
+            else:
+                # Includes: no anchor claimed, unbound or ambiguous anchor,
+                # failed cross-reference, and a decision AFTER the anchor.
+                rec["strength"] = "integrity_bound"
+                if anchor_trusted and bind_status == STATUS_BOUND \
+                        and anchor_index >= 0 and events.index(ev) > anchor_index:
+                    rec["anchor_relationship"] = "anchor_precedes_this_record"
+            order = {"invalid": 0, "unproven": 1, "integrity_bound": 2,
+                     "authenticated": 3}
+            if weakest is None or order[rec["strength"]] < order[weakest]:
+                weakest = rec["strength"]
+        # The step-level value is the WEAKEST record's: one covered record
+        # never launders the others.
+        decision_step["strength"] = weakest or "none"
     result["steps"]["swarm_decision"] = decision_step
 
     snapshot_ok = bool(snapshot_step["passed"] or snapshot_step["skipped"])
