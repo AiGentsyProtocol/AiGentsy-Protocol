@@ -994,6 +994,20 @@ SWARM_POLICY_VERSION = "swarm_enforcement/v1"
 SWARM_DECISION_CONTEXT_VERSION = "swarm_decision/v1"
 
 
+def _swarm_policy_hash(policy: Any) -> str:
+    """The runtime's swarm policy hash convention.
+
+    ``acceptance_gate._swarm_policy_hash`` delegates to
+    ``adapter_contract._canonical_hash``: SHA-256 over sorted, compact JSON.
+    Reproduced here because this package never imports the runtime. This is
+    the SWARM policy hash only — never the outer mandate/acceptance
+    ``policy_hash`` that a consequence payload may also carry.
+    """
+    return hashlib.sha256(json.dumps(
+        policy, sort_keys=True, separators=(",", ":"), default=str,
+    ).encode()).hexdigest()
+
+
 def _normalize_key_directory(kd: Any) -> Dict[str, Any]:
     """Accept both directory shapes: Stage-4 flat {key_id: entry} and the
     82Q-D nested {"keys_by_key_id": {key_id: entry}}."""
@@ -1146,8 +1160,13 @@ def verify_bundle_swarm_strict(
     # all is historical evidence predating this context and is legitimately
     # skipped. An event that carries the key but not an object is malformed
     # PRESENT evidence and must fail, never be silently read as absent.
+    #
+    # CORRECTION-2 — each record is bound to its actual OCCURRENCE (position)
+    # in the verified chain. An event_id is attacker-chosen text: a forged
+    # suffix can reuse an earlier anchored event's id, so an id lookup must
+    # never lend it that event's position or anchor coverage.
     auth_events = [
-        e for e in events
+        (i, e) for i, e in enumerate(events)
         if e.get("event_type") == "CONSEQUENCE_AUTHORIZED"
         and "swarm_decision" in (e.get("payload") or {})
     ]
@@ -1156,12 +1175,18 @@ def verify_bundle_swarm_strict(
     else:
         decision_step["present"] = True
         deal_id = bundle.get("deal_id", "")
-        for ev in auth_events:
+        id_counts: Dict[str, int] = {}
+        for e in events:
+            eid = e.get("event_id")
+            if isinstance(eid, str) and eid:
+                id_counts[eid] = id_counts.get(eid, 0) + 1
+        for event_index, ev in auth_events:
             payload = ev.get("payload") or {}
             raw_ctx = payload.get("swarm_decision")
             ctx = raw_ctx if isinstance(raw_ctx, dict) else {}
             rec: Dict[str, Any] = {
                 "event_id": ev.get("event_id", ""),
+                "event_index": event_index,
                 "identity_hash": payload.get("identity_hash", ""),
                 "decision": payload.get("decision", ""),
                 "enforcement": ctx.get("enforcement"),
@@ -1260,15 +1285,17 @@ def verify_bundle_swarm_strict(
             # A named policy_event_id must exist in the bundle and must be a
             # lawful designation; its policy must be the one cited.
             ctx_pid = ctx.get("policy_event_id")
+            ctx_phash = ctx.get("policy_hash")
             if ctx_pid:
-                named = None
-                for cand in events:
-                    if cand.get("event_id") == ctx_pid:
-                        named = cand
-                        break
-                if named is None:
+                named_all = [c for c in events if c.get("event_id") == ctx_pid]
+                named = named_all[0] if len(named_all) == 1 else None
+                if not named_all:
                     rec["errors"].append(
                         f"context policy_event_id {ctx_pid!r} names no event in this bundle")
+                elif named is None:
+                    rec["errors"].append(
+                        f"context policy_event_id {ctx_pid!r} is ambiguous — "
+                        f"{len(named_all)} events carry it")
                 else:
                     npol = (named.get("payload") or {}).get("swarm_policy")
                     if not isinstance(npol, dict):
@@ -1285,6 +1312,18 @@ def verify_bundle_swarm_strict(
                                 and npol["policy_version"] != ctx["policy_version"]:
                             rec["errors"].append(
                                 "context policy_version differs from the designation it names")
+                        # The recorded swarm policy hash must be the hash of
+                        # the exact policy this record names.
+                        if ctx_phash and _swarm_policy_hash(npol) != ctx_phash:
+                            rec["errors"].append(
+                                "context policy_hash does not match the swarm policy it names")
+            elif ctx_phash:
+                # A hash with no named policy describes nothing checkable, and
+                # comparing it with some other (e.g. latest) policy would be a
+                # guess. Missing evidence never substantiates the claim.
+                rec["errors"].append(
+                    "context policy_hash stated without policy_event_id — "
+                    "the policy it describes cannot be identified")
             elif designation is not None and isinstance(
                     ctx.get("required_signed_event_types"), list):
                 # No named designation: fall back to the bundle's signed one.
@@ -1330,34 +1369,38 @@ def verify_bundle_swarm_strict(
         bind_status, bound_event = find_bound_leaf_event(
             events, bundle.get("merkle_inclusion"))
         decision_step["anchor_binding"] = bind_status
-        try:
-            anchor_index = events.index(bound_event) if bound_event is not None else -1
-        except ValueError:
-            anchor_index = -1
+        # Position of the bound event by identity — never by value equality or id.
+        anchor_index = next(
+            (i for i, e in enumerate(events) if e is bound_event), -1)
         decision_step["anchor_event_id"] = (
             (bound_event or {}).get("event_id", "") if bound_event else "")
 
         weakest = None
-        for rec, ev in zip(decision_step["records"], auth_events):
+        for rec, (event_index, _ev) in zip(decision_step["records"], auth_events):
+            eid = rec["event_id"]
             if rec["errors"]:
                 rec["strength"] = "invalid"
             elif not integrity_ok:
                 rec["strength"] = "unproven"
+            elif not (isinstance(eid, str) and eid and id_counts.get(eid) == 1):
+                # The record cannot be referred to unambiguously. Withhold
+                # authentication rather than guess which occurrence is meant.
+                rec["strength"] = "integrity_bound"
+                rec["anchor_relationship"] = "ambiguous_event_id"
             elif (anchor_trusted and bind_status == STATUS_BOUND
-                  and anchor_index >= 0
-                  and events.index(ev) <= anchor_index):
+                  and anchor_index >= 0 and event_index <= anchor_index):
                 # The anchored leaf is this decision, or a later event whose
                 # verified prev_hash chain commits back through it.
                 rec["strength"] = "authenticated"
                 rec["anchor_relationship"] = (
-                    "direct" if events.index(ev) == anchor_index
+                    "direct" if event_index == anchor_index
                     else "later_anchor_commits_to_this_prefix")
             else:
                 # Includes: no anchor claimed, unbound or ambiguous anchor,
                 # failed cross-reference, and a decision AFTER the anchor.
                 rec["strength"] = "integrity_bound"
                 if anchor_trusted and bind_status == STATUS_BOUND \
-                        and anchor_index >= 0 and events.index(ev) > anchor_index:
+                        and anchor_index >= 0 and event_index > anchor_index:
                     rec["anchor_relationship"] = "anchor_precedes_this_record"
             order = {"invalid": 0, "unproven": 1, "integrity_bound": 2,
                      "authenticated": 3}

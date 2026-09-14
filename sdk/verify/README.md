@@ -221,16 +221,25 @@ and authentication strength separately:
 
 | `strength` | Meaning |
 | --- | --- |
-| `authenticated` | valid, and bundle hash, event chain, Merkle inclusion and STH signature all verify |
-| `integrity_bound` | valid, and bundle hash + event chain verify, but the bundle is unanchored |
+| `authenticated` | valid, and a trusted anchor covers **this record's own event**: bundle hash and event chain verify; Merkle inclusion, the STH signature under the log key you supplied, and cross-reference pass; the anchored leaf binds to exactly one event; that event is this decision or a later one whose hash chain commits back through it; and the record's `event_id` is unique in the bundle |
+| `integrity_bound` | valid, and bundle hash + event chain verify, but no trusted anchor covers this record — unanchored, anchored only at an earlier event, an unbound or ambiguous anchor, or a non-unique `event_id` |
 | `unproven` | valid record, but the surrounding integrity steps did not verify |
 | `invalid` | a definitive contradiction — rejected regardless of anchoring |
 | `none` | no decision record present |
 
+Four general checks passing does not by itself make a decision
+`authenticated`: an anchor commits to the chain up to its own leaf and says
+nothing about what follows it. Strength is per record — each carries
+`event_index` (its position in the chain) and, where relevant,
+`anchor_relationship` — and the step reports the weakest record.
+
 A definitive contradiction (recomputed digest mismatch, unsupported
 `context_version`, wrong types, identity or deal correlation mismatch,
-designation disagreement) fails the step and is never softened by a missing
-anchor. Absence is not failure: bundles produced before this context keep their
+designation disagreement, a `policy_hash` that is not the hash of the swarm
+policy its `policy_event_id` names, an ambiguous or missing named policy, or a
+`policy_hash` stated with no `policy_event_id`) fails the step and is never
+softened by a missing anchor. The swarm `policy_hash` is distinct from any
+outer mandate or acceptance `policy_hash` in the same payload. Absence is not failure: bundles produced before this context keep their
 existing results and gain no enforcement claim.
 
 Distinguishing values matter. `evaluated: false` with `applicable`/`satisfied`
